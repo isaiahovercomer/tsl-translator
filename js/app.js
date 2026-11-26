@@ -6,7 +6,7 @@ import * as store from './store.js';
 import { toGloss, aiGloss, mapGloss } from './gloss.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.7.3';
+const VERSION = '0.7.4';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -20,7 +20,9 @@ try { S = { ...DEF, ...JSON.parse(localStorage.getItem('tsl-settings') || '{}') 
 if (!S.v5) { S.avatarKind = { female: '2d-f1', male: '2d-m1' }[S.avatarKind] || S.avatarKind; S.v5 = 1; }
 // v0.7：預設改成插畫風 3D 主播（VRM）
 // v0.7.3：使用者選定插畫風 A3（扁平色塊）；選單只留 6 位插畫風主播＋簡筆＋自訂，其他選項換成同性別的插畫風主播
-if (S.v7 && !S.v8) { const k = S.avatarKind; if (!/^vrm-[fm][123]$/.test(k) && !['2d', 'custom'].includes(k)) S.avatarKind = /(^|-)m(\d|ale|$)/.test(k) ? 'vrm-m1' : 'vrm-f1'; S.v8 = 1; }   // 男：male、biz-m1、2d-m2、vrm-m3-flat…；female 不算
+if (S.v7 && !S.v8) { const k = S.avatarKind; if (!/^vrm-[fm][123]$/.test(k) && !['2d', 'custom'].includes(k)) S.avatarKind = /(^|-)m(\d|ale|$)/.test(k) ? 'vrm-m3' : 'vrm-f1'; S.v8 = 1; }   // 男：male、biz-m1、2d-m2、vrm-m3-flat…；female 不算
+// v0.7.4：主播只留 女（vrm-f1）、男（vrm-m3）
+if (S.v8 && !S.v9) { S.avatarKind = { 'vrm-f2': 'vrm-f1', 'vrm-f3': 'vrm-f1', 'vrm-m1': 'vrm-m3', 'vrm-m2': 'vrm-m3' }[S.avatarKind] || S.avatarKind; S.v9 = 1; }
 if (!S.v7) { S.avatarKind = { '2d-f1': 'vrm-f1', '2d-f2': 'vrm-f2', '2d-m1': 'vrm-m1', '2d-m2': 'vrm-m2', female: 'vrm-f1', male: 'vrm-m1' }[S.avatarKind] || S.avatarKind; S.v7 = 1; }
 const saveS = () => { try { localStorage.setItem('tsl-settings', JSON.stringify(S)); } catch {} };
 saveS();
@@ -104,7 +106,7 @@ async function applyAvatar() {
   if (url) $('avatarStatus').textContent = '3D 人像載入中…（第一次約 5 MB，之後會記住）';
   // VRM 比較大：語料預覽那格用同性別的 2D 人像，省手機記憶體
   const isVrm = /\.vrm(#|$)/i.test(url || '');
-  if (isVrm) preview.style = S.avatarKind.startsWith('vrm-m') ? 'm1' : 'f1';
+  if (isVrm) preview.style = S.avatarKind.startsWith('vrm-m') ? 'm2' : 'f1';
   try { await Promise.all([player.set3D(url), preview.set3D(isVrm ? null : url)]); }
   catch (e) { console.warn(e); toast('3D 人像載入失敗，先用 2D 人像：' + e.message, 4000); player.set3D(null); preview.set3D(null); }
   $('avatarStatus').textContent = `語料庫：${byWord.size} 個詞、${samples.length} 筆樣本`;
@@ -533,7 +535,7 @@ function fillSettings() {
   $('threshold').value = S.threshold; $('thVal').textContent = S.threshold;
   $('avatarSpeed').value = S.avatarSpeed; $('spVal').textContent = S.avatarSpeed + '×';
   $('rate').value = S.rate; $('rtVal').textContent = S.rate + '×'; $('aliases').value = S.aliases;
-  if (!AVATAR_URLS[S.avatarKind] && !['2d', 'custom', ...STYLE_KINDS, ...REAL_KINDS].includes(S.avatarKind)) S.avatarKind = '2d-f1';
+  if (!['vrm-f1', 'vrm-m3', '2d', 'custom'].includes(S.avatarKind)) S.avatarKind = /(^|-)m(\d|ale|$)/.test(S.avatarKind) ? 'vrm-m3' : 'vrm-f1';
   $('playMode').value = S.playMode;
   $('prefCat').value = S.prefCat; $('addCat').value = S.addCat; $('glossMode').value = S.glossMode;
   $('avatarKind').value = S.avatarKind; $('avatarUrl').value = S.avatarUrl; $('avatarUrl').hidden = S.avatarKind !== 'custom';
