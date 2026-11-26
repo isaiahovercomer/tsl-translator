@@ -6,7 +6,7 @@ import * as store from './store.js';
 import { toGloss, aiGloss, mapGloss, aiFluent } from './gloss.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.8.0';
+const VERSION = '0.8.1';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
