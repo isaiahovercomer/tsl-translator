@@ -1,11 +1,14 @@
-# 交接報告：台灣手語對話翻譯器（2026-11-26 下午，v0.5.0）
+# 交接報告：台灣手語對話翻譯器（2026-11-26 下午，v0.6.0）
 
-## 下一個工作階段：寫實 2D 人像（使用者覺得 3D 和 2D 卡通都太醜）
-- 使用者要「新竹市 AI 手語翻譯」那種寫實風格：https://www.facebook.com/reel/1485060616853778（Facebook 擋自動讀取，Claude 看不到；請使用者傳截圖）。
-- 新聞：新竹市府＋工研院＋中華民國聾人協會，2026-11-14 將軍村首度展示；鏡頭辨識手語 → 螢幕顯示文字，再由虛擬人物用手語回答（公視 2026-11-19）。工研院流程：文字 → 手語稿 → 骨架估測 → 影像生成（公視 AI 手語氣象主播）。
-- 推測：寫實人像是「骨架帶動的 AI 影像生成」（姿勢→真人影片），不是即時 3D／卡通。
-- 方案：A. 雲端 GPU 預先算每個詞的真人影片（4 位虛構主播：男女各 2，用 AI 生成臉），每段從休息姿勢開始、結束，播放時接起來；常用詞先做。要 GPU（box 點數用完；可評估 Daytona GPU／Modal／RunPod），約數十～數百 GPU 小時。影片放 Cloudflare R2。B. 即時版保留 2D 卡通／3D 當備用（離線、沒算到的詞）。
-- 待使用者決定：是否同意花 GPU 費用、先做幾個詞、主播長相。
+## v0.6.0：寫實 2D 主播（新竹 AI 手語風格）— 進行中
+- 使用者給的截圖：半寫實插畫風（韓漫／webtoon 感）女主播、深藍西裝外套＋白上衣、城市背景；手有 AI 生成的模糊殘影 → 確定是「骨架帶動的 AI 影片生成」。
+- 使用者決定**用自己的 Google Colab 額度**跑。
+- `colab/tsl_realistic.ipynb`（由 `tools/realistic/make_notebook.py` 產生，改內容改這支再執行）：
+  ① 設定（主播 f1/f2/m1/m2、詞數、解析度 384×640 或 576×1024、步數、指定詞）② 安裝（MimicMotion 1.1＋DWPose＋SVD xt 1.1 只下載 vae／image_encoder fp16 等；需 Colab 密鑰 `HF_TOKEN` 並在 HF 同意 SVD 授權；sed 修掉 loader 的 `safe_globals(*allowed_modules)`，新版 torch 會出錯；diffusers 0.27.2／transformers 4.41.2／huggingface_hub 0.25.2）③ SDXL 產生 4 張主播候選圖（或上傳）④ 選定、DWPose 偵測主播骨架 ⑤ 挑詞（指定詞＋基本詞＋辭典例句常用詞，召會用語優先）⑥ 產生（每詞一段，存雲端硬碟 `tsl-realistic/<主播>/`，manifest.json 可續跑）⑦ 預覽 ⑧ 用 `GITHUB_TOKEN` 推到 repo `realistic/<主播>/`。
+  - **尚未在 GPU 上實際跑過**，第一次很可能要除錯；請使用者截圖錯誤。
+- `tools/realistic/tsl_pose.py`：82 點骨架 → DWPose dict（OpenPose 18 身體、手 21×2、臉 25→iBUG 68 子集），整段一次縮放平移對齊主播圖（`fit_to_ref`），開頭從主播姿勢過渡 4 格（`blend_from_ref`）；已用 MimicMotion 的 `draw_pose` 在本機驗證。
+- 網站 `js/realplayer.js`：設定選「寫實主播」→ 讀 `realistic/<主播>/manifest.json`，每個詞播一段影片（兩個 video 淡入淡出、預載下一段），沒有影片的詞用同性別插畫人像頂替；跟播放佇列（暫停／下一句／重播）整合；畫面改直式 3:4。sw.js 不快取 mp4（分段讀取）。已用假影片在 headless Chrome 測過。
+- 下一步：使用者跑通 Colab → 看品質（手、臉）→ 調 STEPS／解析度／主播圖 → 擴大詞數、做其他主播；寫實影片多了再把預設人像改成寫實主播。
 
 ## v0.5.0
 1. **2D 插畫人像**（`js/avatar2d.js`，預設）：女・長髮、女・短髮、男・短髮、男・眼鏡（設定 → 手語人像；3D 仍可選）。舊設定 3D 女／男自動換成 2D 女・長髮／男・短髮（`S.v5`）。
@@ -42,7 +45,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.5.0
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.6.0
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。
