@@ -41,8 +41,9 @@ with sync_playwright() as p:
     print('設定頁統計：', pg.evaluate("document.getElementById('recStats').textContent"))
     # 改正：模擬詞卡改正 → 收集資料多一筆 src=correct
     pg.evaluate("""() => { const t = window.__tsl; t.onSign(window.__fr0 || [], [{ word: '你', dist: 0.5 }, { word: '我', dist: 0.6 }]); }""")
-    pg.once('dialog', lambda d: d.accept('我'))
-    pg.click('#signChips .chip'); pg.wait_for_timeout(500)
+    pg.click('#signChips .chip'); pg.wait_for_timeout(200)   # v0.19：跳出 3 個候選（不再用 prompt）
+    assert pg.is_visible('#wordPick'), '候選詞視窗沒出現'
+    pg.click('#wpWords button[data-w="我"]'); pg.wait_for_timeout(500)
     c = pg.evaluate("window.__tsl.store.collectAll().then(a => a.filter(s => s.src === 'correct').map(s => [s.word, s.was]))")
     print('改正：', c); assert c and c[-1] == ['我', '你']
     b.close()

@@ -7,14 +7,14 @@ escapeInApp();   // 在 LINE 裡打開：自動改用手機瀏覽器（LINE 內�
 import * as store from './store.js';
 import { toGloss, aiGloss, mapGloss, aiFluent, aiPick, smartTokenize } from './gloss.js';
 import { SCENES, SCENE_ORDER, sceneWords, CORE } from './scenes.js';
-import { initCollect, addLog, addCorrection, recStats, enableHelp, helpOn, noteMissing } from './collect.js';
+import { initCollect, addLog, addCorrection, recStats, enableHelp, helpOn, noteMissing, addWish } from './collect.js';
 import { makeSpotter } from './spot-client.js';
 import { MODEL_VER, ORT_FILES } from './model.js';
 import { prefetch, markOffline, offlineInfo, onWifi } from './offline.js';
 import { CloudSTT } from './stt.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.18.0';
+const VERSION = '0.19.0';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -67,7 +67,7 @@ function applyScene() {
   try { spot.sync(); } catch {}   // spot 還沒建立（模組剛載入）就略過，建立時會 sync
   const n = recog.words.length, name = (SCENES[S.scene] || SCENES.greet).name;
   $('sceneInfo').textContent = featsReady || n ? `辨識 ${n} 個詞` : '';
-  $('f2fScene').textContent = '🏷' + (SCENES[S.scene] || SCENES.greet).short;
+  $('f2fScene').innerHTML = '<b>🏷</b><span>' + (SCENES[S.scene] || SCENES.greet).short + '</span>';
 }
 async function loadCorpus() {
   index = await store.sharedIndex();
@@ -139,7 +139,7 @@ async function glossTokens(text) {
   const rule = toGloss(text, vocab, al);
   if (S.glossMode === 'ai' && navigator.onLine !== false) {
     const g = await aiGloss(text, rule.tokens.filter(t => t.known).map(t => t.word));
-    if (g) return { toks: mapGloss(g, vocab, al), how: 'AI 手語語序：' + g.join('／') };
+    if (g) { const toks = mapGloss(g, vocab, al, text); return { toks, how: 'AI 手語語序：' + toks.map(t => t.word).join('／') }; }
   }
   return { toks: rule.tokens, how: '規則手語語序：' + rule.tokens.map(t => t.word).join('／') };
 }
@@ -331,8 +331,16 @@ function renderLog() {
   el.hidden = !logLines.length && !cur;
   el.scrollTop = el.scrollHeight;
   // 面對面模式下方字幕：最近兩句＋正在比的
-  const f = $('f2fSign');
-  f.innerHTML = logLines.slice(cur ? -1 : -2).map(l => `<div>${lineHtml(l)}</div>`).join('') + (cur ? `<div class="cur">${esc(cur)}</div>` : '');
+  // 每個詞都可以點（改正認錯的詞）
+  const f = $('f2fSign'), n0 = Math.max(0, logLines.length - (cur ? 1 : 2));
+  const fw = (li, k, w) => `<b class="fw" data-l="${li}" data-k="${k}">${esc(w)}</b>`;
+  const tapLine = (l, li) => {
+    if (!l.slots) return lineHtml(l);
+    const ws = l.words.map((w, k) => w ? fw(li, k, w) : '').filter(Boolean).join('/');
+    return l.t ? `${esc(l.t)}<small>${ws}</small>` : ws;
+  };
+  f.innerHTML = logLines.slice(n0).map((l, i) => `<div>${tapLine(l, n0 + i)}</div>`).join('') +
+    (cur ? `<div class="cur">${signWords.map((w, k) => fw('cur', k, curWord(w))).join('/')}</div>` : '');
   f.classList.toggle('empty', !f.innerHTML);
 }
 // 一句結束（停下來 2 秒多）：這句移到逐字稿、清空詞卡；AI 把手語詞序轉成通順中文
@@ -342,7 +350,7 @@ async function endSentence() {
   const words = ws.filter(w => w.word).map(w => w.word), s = words.join('');
   if (S.speakMode === 'pause' && s) say(s);
   let line = null;
-  if (ws.length) { line = { g: ws.map(w => w.word || '？').join(''), t: null }; logLines.push(line); }
+  if (ws.length) { line = { g: ws.map(w => w.word || '？').join(''), t: null, slots: ws, words: ws.map(w => w.word || '？') }; logLines.push(line); }
   if (logLines.length > 200) logLines.splice(0, logLines.length - 200);
   renderSignChips();
   if (s) $('signSentence').textContent = s;
@@ -357,6 +365,7 @@ async function endSentence() {
     if (!cands.length) { logIt(null, null); return; }
     const r = online ? await aiPick(cands, { scene: (SCENES[S.scene] || {}).name || '' }) : null;
     const top = slots.map(w => w.fixed || w.alt[0].word);
+    line.slots = slots; line.words = r ? slots.map((w, i) => r.pick[i] || null) : top.slice();   // 面對面字幕可以點詞改正
     if (r) {
       line.g = r.pick.map((p, i) => p || '').filter(Boolean).join('/') || top.join('/'); line.t = r.text;
       // 挑的跟第一候選不一樣、AI 略過的：記下來（之後可拿來改語料）
@@ -372,19 +381,48 @@ async function endSentence() {
   if (S.speakMode === 'fluent' && s) say(t || s);
   logIt(null, S.speakMode === 'fluent' ? (t || s) : S.speakMode === 'pause' ? s : null);
 }
-$('signChips').onclick = e => {
-  const c = e.target.closest('.chip'); if (!c) return;
-  const w = signWords[c.dataset.i];
-  const opts = w.cands.map(x => x.word);
-  const pick = window.prompt('改成哪個詞？（也可以輸入新詞，會存成新語料）\n候選：' + opts.join('、'), opts[0]);
-  if (!pick) return;
-  w.word = w.fixed = pick.trim();
-  // 改正的結果直接存成本機語料，越用越準；也放進收集資料（有同意「幫忙改進辨識」才上傳），給之後訓練模型
-  const smp = makeSample(w.word, w.frames, 'correction', { aspect: vAsp($('camVideo')), cat: S.prefCat });
+// ---- 改正認錯的詞（v0.19）：點詞卡或面對面字幕的詞 → 跳出前 3 個候選 ----
+let pickCtx = null;
+function openPick(w, now, onPick) {
+  const opts = [...new Set([...(w.alt || []), ...w.cands].map(c => c.word))].slice(0, 3);
+  $('wpNow').textContent = now ? `現在顯示：${now}` : '';
+  $('wpWords').innerHTML = opts.map(o => `<button data-w="${esc(o)}" class="${o === now ? 'on' : ''}">${esc(o)}</button>`).join('');
+  pickCtx = { w, onPick }; $('wordPick').hidden = false;
+}
+function closePick() { $('wordPick').hidden = true; pickCtx = null; }
+$('wordPick').onclick = e => {
+  if (e.target === $('wordPick') || e.target.id === 'wpCancel') return closePick();
+  const b = e.target.closest('button'); if (!b || !pickCtx) return;
+  const c = pickCtx;
+  if (b.id === 'wpOther') { closePick(); const v = window.prompt('改成哪個詞？（會存成新語料）', ''); if (v && v.trim()) c.onPick(v.trim()); return; }
+  if (b.dataset.w) { closePick(); c.onPick(b.dataset.w); }
+};
+// 改正的結果直接存成本機語料，越用越準；也放進收集資料（有同意「幫忙改進辨識」才上傳），給之後訓練模型
+function fixSlot(w, word) {
+  w.word = w.fixed = word;
+  const smp = makeSample(word, w.frames, 'correction', { aspect: vAsp($('camVideo')), cat: S.prefCat });
   store.localPut(smp).then(loadCorpus);
   addCorrection(smp, w.cands[0] && w.cands[0].word);
-  renderSignChips();
-};
+}
+function curWord(w) { return w.word || (w.keep ? w.cands[0].word + '?' : '？'); }
+// 正在比的這句：改了就更新詞卡；已經說完的句子：改了重新轉通順中文、再唸一次
+function pickSlot(li, k) {
+  if (li === 'cur') {
+    const w = signWords[k]; if (!w) return;
+    return openPick(w, curWord(w), word => { fixSlot(w, word); renderSignChips(); });
+  }
+  const l = logLines[li]; if (!l || !l.slots || !l.slots[k]) return;
+  openPick(l.slots[k], l.words[k], async word => {
+    fixSlot(l.slots[k], word);
+    l.words[k] = word; l.g = l.words.filter(w => w && w !== '？').join('/'); l.t = null; renderLog();
+    const ws = l.words.filter(w => w && w !== '？');
+    const t = ws.length >= 2 && navigator.onLine !== false && hasApi ? await aiFluent(ws) : null;
+    if (t) { l.t = t; renderLog(); }
+    say(t || ws.join(''), true);
+  });
+}
+$('signChips').onclick = e => { const c = e.target.closest('.chip'); if (c) pickSlot('cur', +c.dataset.i); };
+$('f2fSign').onclick = e => { const c = e.target.closest('.fw'); if (c) pickSlot(c.dataset.l === 'cur' ? 'cur' : +c.dataset.l, +c.dataset.k); };
 const sentence = () => signWords.filter(w => w.word).map(w => w.word).join('');
 // 「比慢一點、詞和詞之間手稍停」提示：開鏡頭時出現 10 秒；沒認出來時變紅再出現 4 秒
 function showTip(warn) {
@@ -473,9 +511,9 @@ function f2fSeen(yes, hands) {   // 小視窗外框：綠＝有拍到人，紅�
 let lostSince = 0;
 function f2fUpdate() {
   const on = listening || camOn();
-  $('f2fGo').textContent = on ? '⏹ 停止' : '▶ 開始'; $('f2fGo').classList.toggle('rec', on); $('f2fGo').classList.toggle('primary', !on);
+  $('f2fGo').innerHTML = on ? '<b>⏹</b><span>停止</span>' : '<b>▶</b><span>開始</span>'; $('f2fGo').classList.toggle('rec', on); $('f2fGo').classList.toggle('primary', !on);
   $('f2fPip').classList.toggle('off', !camOn());
-  $('f2fPause').textContent = paused() ? '▶' : '⏸';
+  $('f2fPause').innerHTML = paused() ? '<b>▶</b><span>繼續</span>' : '<b>⏸</b><span>暫停</span>';
   if (!listening) micLight('off'); else if ($('f2fMic').dataset.st === 'off' || !$('f2fMic').dataset.st) micLight('on');
   if (!camOn()) setLight('f2fEye', 'eye', 'off');
 }
@@ -483,13 +521,18 @@ function f2fUpdate() {
 function f2fLayout() { if (!f2fOn) return; $('f2f').style.setProperty('--barh', ($('f2f').querySelector('.f2f-bar').offsetHeight + $('f2fVer').offsetHeight) + 'px'); }
 addEventListener('resize', () => setTimeout(f2fLayout, 50));
 const SIZES = [1, 1.25, 1.5];
-function f2fSize(next) { if (next) { S.f2fSize = SIZES[(SIZES.indexOf(S.f2fSize) + 1) % SIZES.length] || 1; saveS(); } $('f2f').style.setProperty('--fs', S.f2fSize || 1); }
+function f2fSize(next) {
+  if (next) { S.f2fSize = SIZES[(SIZES.indexOf(S.f2fSize) + 1) % SIZES.length] || 1; saveS(); toast('字幕大小 ' + Math.round((S.f2fSize || 1) * 100) + '%', 1200); }
+  $('f2f').style.setProperty('--fs', S.f2fSize || 1); player.capScale = f2fOn ? S.f2fSize || 1 : 1;
+  requestAnimationFrame(f2fLayout);
+}
 function enterF2F() {
   if (f2fOn) return; f2fOn = true;
   const avStage = $('avatar').parentElement, camStage = $('camVideo').parentElement;
   f2fHome = [[avStage, avStage.parentElement, avStage.nextSibling], [camStage, camStage.parentElement, camStage.nextSibling]];
   $('f2fStage').appendChild(avStage); $('f2fPip').appendChild(camStage);
   $('f2f').hidden = false; document.body.classList.add('f2f-on');
+  $('f2f').append($('wordPick'), $('toast'));   // 全螢幕時只看得到 #f2f 裡面的東西：改詞視窗、提示訊息搬進來
   const el = $('f2f');
   if (el.requestFullscreen) el.requestFullscreen({ navigationUI: 'hide' }).then(() => screen.orientation?.lock?.('portrait')).catch(() => {});
   else if (el.webkitRequestFullscreen) try { el.webkitRequestFullscreen(); } catch {}
@@ -498,9 +541,9 @@ function enterF2F() {
   if (location.hash !== '#f2f') history.pushState({ f2f: 1 }, '', '#f2f');
 }
 function exitF2F(fromPop) {
-  if (!f2fOn) return; f2fOn = false;
+  if (!f2fOn) return; f2fOn = false; player.capScale = 1;
   for (const [n, parent, next] of f2fHome) parent.insertBefore(n, next);
-  $('f2f').hidden = true; document.body.classList.remove('f2f-on');
+  $('f2f').hidden = true; document.body.classList.remove('f2f-on'); document.body.append($('wordPick'), $('toast'));
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
   if (!fromPop && location.hash === '#f2f') history.back();
@@ -538,6 +581,22 @@ showPermWarn();
 // 第一次打開：自動跳出使用說明（最後一頁問權限、教安裝）
 if (!guided() && !new URLSearchParams(location.search).has('noguide')) openGuide(0);
 $('f2fSize').onclick = () => f2fSize(true);
+// 底部按鈕：長按（約半秒）說明這顆按鈕做什麼（v0.19）——分清楚「停止」和「✕ 離開」
+const F2F_HELP = {
+  f2fGo: () => (listening || camOn()) ? '⏹ 停止：關掉麥克風和鏡頭（不聽、不看手語），畫面留著。要回一般畫面按「✕ 離開」' : '▶ 開始：打開麥克風聽人說話＋前鏡頭看手語',
+  f2fPause: () => '⏸ 暫停：手譯員先停住，再按一次繼續（麥克風、鏡頭照樣開著）',
+  f2fNext: () => '⏭ 下一句：跳過正在比的這句，直接比下一句',
+  f2fScene: () => '🏷 情境：手語只在這個情境常用的詞裡找，比較準（點一下換：寒暄→聚會→召會→全部）',
+  f2fSize: () => 'Aa 字幕：字幕和手譯員旁邊的詞放大（100%→125%→150%）',
+  f2fExit: () => '✕ 離開：回到一般畫面。' + ((listening || camOn()) ? '麥克風和鏡頭還開著，要關先按「停止」' : ''),
+};
+for (const [id, help] of Object.entries(F2F_HELP)) {
+  const b = $(id); let tm = 0, long = false;
+  b.addEventListener('pointerdown', () => { long = false; clearTimeout(tm); tm = setTimeout(() => { long = true; toast(help(), 4000); if (navigator.vibrate) navigator.vibrate(15); }, 550); });
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => clearTimeout(tm));
+  b.addEventListener('click', e => { if (long) { long = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);   // 長按後放開不要觸發按鈕
+  b.addEventListener('contextmenu', e => e.preventDefault());
+}
 $('f2fExit').onclick = () => exitF2F();
 $('f2fGo').onclick = f2fToggle;
 $('f2fPause').onclick = () => { $('btnPause').click(); f2fUpdate(); };
@@ -557,11 +616,15 @@ function renderCorpus() {
   $('corpusStats').textContent = `${byWord.size} 個詞、${samples.length} 筆樣本（共用 ${samples.length - local}、本機 ${local}）・一般生活用語 ${nCat('general')} 詞、召會生活用語 ${nCat('church')} 詞`;
   const inCat = w => !cat || byWord.get(w).some(s => catOf(s) === cat);
   const words = [...byWord.keys()].filter(w => (!q || w.includes(q)) && inCat(w)).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+  // 選的詞不在搜尋結果裡：清掉舊的預覽（v0.19）
+  if (selWord && (q || cat) && !words.includes(selWord)) { selWord = null; preview.stop(); }
   const isChurch = w => byWord.get(w).some(s => catOf(s) === 'church');
   const more = words.length - wordLimit;
   $('btnMoreWords').hidden = more <= 0; if (more > 0) $('btnMoreWords').textContent = `顯示更多（還有 ${more} 個詞）`;
   $('wordList').innerHTML = words.slice(0, wordLimit).map(w => `<button class="word ${w === selWord ? 'sel' : ''}" data-w="${esc(w)}"><b>${esc(w)}</b><span class="muted">${isChurch(w) ? '⛪ ' : ''}${byWord.get(w).length} 筆</span></button>`).join('')
-    || '<span class="muted">還沒有語料。到「新增語料」開始建立。</span>';
+    || (q ? `<div class="qempty">語料庫還沒有「<b>${esc(q)}</b>」${cat ? `（${esc(CATS[cat] || '')}）` : ''}。可以：
+      <div class="row"><a class="btn" href="${dictUrl(q)}" target="_blank" rel="noopener">📖 查辭典</a><button id="qRec">📷 現在錄這個詞</button><button id="qWish">🗂 加入收集清單</button></div></div>`
+      : '<span class="muted">還沒有語料。到「新增語料」開始建立。</span>');
   renderSamples();
 }
 let wordLimit = 150;   // 一次只畫 150 個詞（全部 3000 多個在手機上會卡）
@@ -569,6 +632,17 @@ $('corpusSearch').oninput = () => { wordLimit = 150; renderCorpus(); };
 $('corpusCat').onchange = () => { wordLimit = 150; renderCorpus(); };
 $('btnMoreWords').onclick = () => { wordLimit += 300; renderCorpus(); };
 $('wordList').onclick = e => {
+  const q = $('corpusSearch').value.trim();
+  if (e.target.closest('#qRec')) {   // 搜尋沒結果 → 到「新增語料」用鏡頭錄這個詞
+    $('recWord').value = q; location.hash = '#add';
+    setTimeout(() => { $('recWord').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('btnRec').focus({ preventScroll: true }); }, 80);
+    return;
+  }
+  if (e.target.closest('#qWish')) {  // 加到收集模式「說話時手譯員比不出來的詞」清單（大家錄的時候會看到）
+    addWish(q);
+    toast(helpOn() ? `已加入收集清單：「${q}」（收集模式「說話時手譯員比不出來的詞」）` : `已加入這支手機的收集清單：「${q}」。到設定打開「幫忙改進辨識」，大家的收集清單也會看到`, 4000);
+    return;
+  }
   const b = e.target.closest('.word'); if (!b) return; selWord = b.dataset.w; renderCorpus(); playSample(byWord.get(selWord)[0]);
   $('previewBox').scrollIntoView({ behavior: 'smooth', block: 'center' });
 };

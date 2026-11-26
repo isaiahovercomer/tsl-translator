@@ -5,6 +5,7 @@
 //   的、了、是、在、把、被、嗎…等虛詞不比。
 // 離線也能用；有網路時 app.js 會先問 AI（/api/gloss），AI 失敗或太慢就用這裡的結果。
 import { tokenize } from './core.js';
+import { keepChurch, isChurchTerm, CHURCH_TERMS } from './church.js';
 
 const S = s => new Set(s.split(' '));
 export const DROP = S('的 了 是 在 把 被 得 著 吧 呢 啊 呀 嘛 喔 哦 啦 嗎 就 都 也 地 之 與 和 跟 及 並 而 呢 喲 囉 咧 唷 耶');
@@ -32,7 +33,9 @@ const JUNK = /^[\s，。！？；、,.!?;:：「」『』（）()…—~～\-]*$
 /** tokenize 加上缺詞處理：沒收錄的 → {text, word: text, known: false, card: true} */
 export function smartTokenize(text, vocab, aliases = {}, have = new Set(vocab)) {
   text = normVar(text, have);
-  const toks = tokenize(text, vocab, aliases);
+  // 召會用語（弟兄、聚會…）當成一個詞切出來：語料庫沒有就整個變字卡，不要拆成 弟／兄、聚／會（v0.19）
+  const toks = tokenize(text, [...vocab, ...CHURCH_TERMS], aliases);
+  for (const t of toks) if (t.known && !have.has(t.word) && isChurchTerm(t.word)) { t.known = false; t.card = true; }
   // 每個 token 在原文的位置
   let pos = 0;
   for (const t of toks) { const i = text.indexOf(t.text, pos); t.a = i < 0 ? pos : i; t.b = t.a + t.text.length; pos = t.b; }
@@ -40,7 +43,7 @@ export function smartTokenize(text, vocab, aliases = {}, have = new Set(vocab)) 
   const out = [];
   for (let i = 0; i < toks.length; i++) {
     const t = toks[i];
-    if (t.known) { out.push(t); continue; }
+    if (t.known || t.card) { out.push(t); continue; }
     // 沒收錄的字所在的詞（可能跨好幾個 token）→ 吃掉詞裡面已收錄的「單字」token
     let A = t.a, B = t.b;
     for (const [a, b] of words) if (a < t.b && b > t.a) { A = Math.min(A, a); B = Math.max(B, b); }
@@ -174,15 +177,17 @@ export async function aiPick(cands, { scene = '', timeout = 5000, endpoint = 'ap
 
 const VAR = Object.fromEntries('布佈 台臺 裡裏 著着 群羣 線綫 秘祕 嘆歎 汙污 峰峯 姊姐 啟啓 床牀 鉤鈎 痺痹'.split(' ').flatMap(p => [[p[0], p[1]], [p[1], p[0]]]));
 const variants = w => [...w].map((c, i) => VAR[c] ? w.slice(0, i) + VAR[c] + w.slice(i + 1) : null).filter(Boolean);
-/** AI 給的 gloss 詞 → 語料庫的詞（沒有的詞再用最長比對拆開） */
-export function mapGloss(gloss, vocab, aliases = {}) {
+/** AI 給的 gloss 詞 → 語料庫的詞（沒有的詞再用最長比對拆開）。text＝原句：召會用語被 AI 換掉（弟兄→兄弟、聚會→會）就改回原詞 */
+export function mapGloss(gloss, vocab, aliases = {}, text = '') {
   const have = new Set(vocab), out = [];
-  for (const g0 of gloss) {
+  for (const g0 of keepChurch(text, gloss.map(g => String(g).replace(/_[A-Z0-9]+$/, '').trim()))) {
     const g = g0.replace(/_[A-Z0-9]+$/, '').trim();
     if (!g || DROP.has(g)) continue;
     let w = aliases[g] || g;
     if (!have.has(w)) w = variants(w).find(v => have.has(v)) || w;   // 異體字：宣布→宣佈
     if (have.has(w)) { out.push({ text: g, word: w, known: true }); continue; }
+    // 召會用語語料庫沒有：保留原詞變字卡（不拆成 弟／兄，意思會變）
+    if (isChurchTerm(g)) { out.push({ text: g, word: g, known: false, card: true }); continue; }
     // 每個字都有 → 拆開比；有字沒收錄 → 整個詞當字卡
     const parts = tokenize(normVar(g, have), vocab, aliases);
     if (parts.length && parts.every(t => t.known)) for (const t of parts) out.push({ text: t.text, word: t.word || t.text, known: true });

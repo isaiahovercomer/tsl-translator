@@ -1,11 +1,49 @@
-# 交接報告：主恢復台灣手語對話翻譯（2026-11-27 凌晨，v0.18.0）
+# 交接報告：主恢復台灣手語對話翻譯（2026-11-27，v0.19.0）
 
-## 下一步
-1. **真人實測比較「模型 vs DTW」**：手機開面對面模式比幾句（設定 → 進階 → 手語辨識方式可切換），打開「幫忙改進辨識」上傳紀錄；紀錄每句有 `eng`（model-v1／dtw），模型模式每個手勢另存 `dtw` 候選，可直接比兩種的第一候選、AI 換掉率、使用者改正率。
-2. **請弟兄姊妹用收集模式錄**（最缺的先錄已做好；新清單「說話時手譯員比不出來的詞」）→ 有 5 人以上就在 Colab 重跑 `tsl_recog_train.ipynb` → 新模型放 `models/v2/`、改 `js/model.js` 的 `MODEL_VER`。
-3. Colab 重抽（`reextract` 分支）跑完後：`python tools/reextract.py merge` → `node tools/build_feats.mjs` → `tools/eval_fingers.py`；新語料有 `fbs`，2D／3D 手譯員都會用表情係數。
-4. 例句切詞改用模型重新對齊（訓練→用模型重切→再訓練），標籤會更乾淨。
-5. 之後可考慮：切段也改用模型；有 `_none` 類別後模型直接擋掉不是手語的動作（fuse 已支援）；離線時聽人說話改用裝置上的語音辨識（現在雲端／瀏覽器內建都要網路，只能打字）。
+## 下一步（下一個對話各開一個）
+1. **召會語料**：江啟禎影片自動切段＋字幕對齊預標（YT_COOKIES 已設；`tools/yt_batch.py`、`tools/align_sent.py` 可參考）→ 人工確認後進 `corpus/signs/church/`。先補 v0.19 會變字卡的召會用語（`js/church.js` 的 `CHURCH_TERMS`、`js/scenes.js` 的 `CHURCH_MISSING`）。
+2. **對話紀錄匯出**：面對面模式的聽到的話＋手語逐字稿（`logLines`，每句有 `slots`／`words`／`t`）匯出成文字檔或分享。
+3. **iPhone 實機測試**：Safari／加到主畫面；重點看 v0.19 的改詞視窗、長按說明（iOS 長按會跳選單，已關 `-webkit-touch-callout`）、轉手機後 3D 手譯員、全螢幕（iPhone 不支援元素全螢幕，提示訊息和改詞視窗仍在 #f2f 裡）。
+4. 之前留下的：
+   - 真人實測比較「模型 vs DTW」（設定 → 進階 → 手語辨識方式；打開「幫忙改進辨識」上傳紀錄，紀錄每句有 `eng`、模型模式另存 `dtw` 候選）。
+   - 請弟兄姊妹用收集模式錄（5 人以上就在 Colab 重跑 `tsl_recog_train.ipynb` → `models/v2/`、改 `js/model.js` 的 `MODEL_VER`）。
+   - Colab 重抽（`reextract` 分支）跑完後：`python tools/reextract.py merge` → `node tools/build_feats.mjs` → `tools/eval_fingers.py`。
+   - 例句切詞改用模型重新對齊；`_none` 類別擋掉不是手語的動作；離線時改用裝置上的語音辨識。
+
+## v0.19.0：體驗檢查第一批修正
+### ① AI 手語詞序：召會用語不換成別的意思（`js/church.js`，瀏覽器和雲端共用）
+- 問題：AI 照提示「換成意思相近的詞」，把 弟兄→兄弟、聚會→會、召會→教會。
+- `CHURCH_TERMS`（弟兄 姊妹 召會 聚會 小排 主日 晨興 讀經 禱讀 詩歌 唱詩 擘餅 受浸 阿們 哈利路亞 聖靈 聖徒 恢復本 職事 申言 開展 配搭 服事 長老 恩典 福音 耶穌 基督 聖經 十字架 禱告；一個字的 主／神 不放，免得「主要」被當成「主」；交通 不放，語料庫的「交通」意思不一定）。
+- `keepChurch(text, gloss)`：原句有的召會用語，AI 輸出 ①拆開或顛倒（弟/兄、兄弟）→ 合回來；②換成已知錯換（`SUB`：兄弟、會、會議、教會、禮拜天…）或字都在原詞裡的詞（會），而且那個詞在原句其他地方沒出現 → 改回原詞；③漏掉 → 照原句位置補回去。「主耶穌 → 主/耶穌」這種拆成兩個召會用語的不算錯。
+- 雲端 `functions/api/gloss.js`：提示詞加第 8 條（召會用語照原詞抄）、候選詞說明改成「意思完全相同才換，找不到就照原詞（會變字卡）」；AI 結果先 `keepChurch` 再 `fixWord`；快取 key 改 `|v3`（舊的錯結果不會再拿出來）。`import '../../js/church.js'`，已用 `wrangler pages functions build` 確認打包得到。
+- 瀏覽器 `js/gloss.js`：`mapGloss(gloss, vocab, aliases, text)` 多了原句參數，先 `keepChurch`；召會用語語料庫沒有 → 字卡（不再拆成每個字都有的 讀/經、主/日）。`smartTokenize`（逐詞、規則詞序）也把召會用語當一個詞切，沒收錄就字卡。`app.js` 顯示的「AI 手語語序」改成改正後的詞。
+
+### ② 雲端語音辨識幻覺（`functions/api/stt.js`）
+- `JUNK` 多擋：謝謝大家收看／收聽、本期節目、下集再見、本視頻…；`CREDITS`：作詞／作曲／編曲／填詞／詞曲／監製／混音／製作人／演唱…（30 字內，或出現 2 次以上）。
+- 提示詞吐回來：`promptEcho()`（「繁體中文」「台灣華語的對話」，或一串用頓號接的召會用語佔 60% 以上）→ 空字串；前面一串提示詞後面接真的話 → `stripEcho()` 去掉前面；把前一句（x-prompt）原樣吐回來（4 字以上）→ 空字串。
+- **順便修好簡轉繁的錯位**：`_s2t.json` 的字串裡有 4 位元組的字（𣈶），原本用字串索引兩個兩個讀，之後整段錯位（**來→杨、機→杀、歡→欤、條→来、權→杠、極→构、術→朴、樣→栾**）。改用 `Array.from` 逐字讀。
+
+### ③ 面對面模式：點字幕的詞改正（`app.js` `openPick`／`pickSlot`／`fixSlot`，`index.html` `#wordPick`）
+- 下方「🤟 手語」字幕每個詞都可以點（虛線底），跳出前 3 個候選（`alt`＋`cands` 去重）＋「✏ 其他詞…」＋取消。正在比的句子：改了更新詞卡；**已經說完的句子**（`logLines` 每句多存 `slots`、`words`）：改了重新 `aiFluent` 轉通順中文、再唸一次。改正一樣存成本機語料＋`addCorrection`（訓練資料）。
+- 一般畫面的詞卡也改用這個視窗（原本是 `window.prompt`）。
+- 全螢幕時只看得到 `#f2f` 裡的東西：進面對面模式把 `#wordPick`、`#toast` 搬進 `#f2f`，離開搬回 body（**以前面對面模式的提示訊息其實看不到**）。toast z-index 20→60。
+
+### ④ 面對面字幕被切掉、底部按鈕
+- **字幕被切掉的原因**：2D 畫布（字幕／字卡那張）只在「寬度」變了才重設大小；按 Aa 放大字幕 → 下方字幕區變高、人像區變矮，畫布高度沒跟著改，`object-fit:cover` 把上下裁掉 → 右上角的詞被切掉、跟 3D 人像錯位。`avatar.js` 改成寬或高變了都重設（`size()`）。
+- 右上角的詞也跟著 Aa 放大（`player.capScale`），太長自動縮小到放得下。
+- 橫的畫面：右邊字幕區改成最新的字在下面、上面淡出（以前最新一行被切在底下）。
+- 底部按鈕都有文字：開始／停止、暫停／繼續、下一句、情境（寒暄…）、字幕、離開。**長按約半秒**跳出說明（`F2F_HELP`），長按放開不會觸發按鈕；「停止」＝關麥克風和鏡頭但留在畫面，「✕ 離開」＝回一般畫面（麥克風、鏡頭還開著會提醒）。按 Aa 會顯示目前大小。
+
+### ⑤ 語料庫搜尋沒結果
+- 選的詞不在搜尋結果 → 清掉舊預覽（`preview.stop()`）。
+- 空結果顯示「語料庫還沒有「X」」＋三個按鈕：📖 查辭典、📷 現在錄這個詞（跳到新增語料、填好詞）、🗂 加入收集清單（`collect.js` `addWish()`：當成缺了 5 次，進收集模式「說話時手譯員比不出來的詞」清單；有打開「幫忙改進辨識」就跟紀錄一起上傳給大家）。
+
+### ⑥ 3D 手譯員轉手機錯位
+- 主因同④（2D 疊加畫布高度沒更新）。`avatar3d.js` `resize()` 另外也檢查螢幕像素比（`setPixelRatio`）。
+
+### 其他
+- 版本 0.19.0（`app.js` VERSION、sw `tsl-v0.19.0`，SHELL 加 `js/church.js`）。
+- 新測試 `python3 tools/test_v019.py`（AI 詞序召會用語、字幕點詞改正＋說完的句子改正、放大／轉橫／轉回直畫布大小、長按說明、語料庫空結果三個按鈕；截圖 /home/claude/shots/v019_*.png）。`test_worker.py` 改成點候選視窗。全部通過：test_v019、test_missing、test_f2f、test_collect、test_guide、test_worker、test_model、`node tools/test_collect_api.mjs`。
 
 ## v0.18.0：缺詞處理（字卡）、2D 表情係數、離線準備
 ### ① 說話 → 手譯員：語料庫沒有的詞
@@ -275,7 +313,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.18.0；分支 collect（收集資料＋stats.json）、models（辨識模型）、reextract（Colab 重抽）
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.19.0；分支 collect（收集資料＋stats.json）、models（辨識模型）、reextract（Colab 重抽）
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。

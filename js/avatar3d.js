@@ -264,8 +264,10 @@ export class Avatar3D {
   resize() {
     const r = this.canvas.getBoundingClientRect();
     const w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
-    if (this._w === w && this._h === h) return;
-    this._w = w; this._h = h;
+    const d = Math.min(2, window.devicePixelRatio || 1);
+    if (this._w === w && this._h === h && this._d === d) return;
+    this._w = w; this._h = h; this._d = d;
+    this.renderer.setPixelRatio(d);   // 轉手機、換螢幕：像素比也可能變
     this.renderer.setSize(w, h, false);
     const cam = this.camera; cam.aspect = w / h; cam.updateProjectionMatrix();
     this.camH = 0;   // 畫面大小變了：馬上重新取景

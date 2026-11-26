@@ -118,7 +118,18 @@ input[type=range]{width:100%}
 .segs .seg{display:flex;gap:6px;align-items:center;flex-wrap:wrap;border:1px solid var(--line);border-radius:10px;padding:6px 8px;background:#fff}
 .seg input[type=text]{width:9em}
 progress{width:100%;height:10px}
-.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 20px);transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:999px;font-size:15px;opacity:0;transition:.3s;pointer-events:none;z-index:20;max-width:92vw}
+.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 20px);transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:999px;font-size:15px;opacity:0;transition:.3s;pointer-events:none;z-index:60;max-width:92vw}
+body.f2f-on .toast{bottom:calc(env(safe-area-inset-bottom) + 96px);border-radius:14px;text-align:center;line-height:1.4;width:max-content;max-width:88vw}
+.wpick{position:fixed;inset:0;z-index:55;background:rgba(10,14,24,.45);display:flex;align-items:flex-end;justify-content:center;padding:12px 12px calc(env(safe-area-inset-bottom) + 12px)}
+.wpick[hidden]{display:none}
+.wpick-box{background:#fff;color:var(--ink);border-radius:16px;padding:14px;width:min(420px,100%);box-shadow:0 8px 30px rgba(0,0,0,.35)}
+.wpick-t{font-weight:700;font-size:17px;margin-bottom:10px}.wpick-t small{display:block;font-weight:400;font-size:13px;color:var(--muted)}
+.wpick-words{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.wpick-words button{font-size:22px;font-weight:700;padding:14px 4px;justify-content:center;border-radius:12px}
+.wpick-words button.on{background:var(--gold);color:#fff;border-color:var(--gold)}
+.wpick-more{display:flex;gap:8px;margin-top:10px}.wpick-more button{flex:1;justify-content:center}
+.wpick-note{font-size:12px;color:var(--muted);margin-top:8px;text-align:center}
+.qempty{grid-column:1/-1;padding:14px;border:1px dashed var(--line);border-radius:12px;background:#fbf8f2}.qempty .row{margin-top:8px;flex-wrap:wrap}
 .toast.on{opacity:1}
 .count{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:90px;font-weight:800;color:#fff;text-shadow:0 2px 12px #000}
 label.inline{display:flex;align-items:center;gap:6px}
@@ -196,26 +207,30 @@ body.f2f-on{overflow:hidden}
 .f2f-hear .interim{color:#b7bfd4;font-weight:500;font-size:.8em}
 .f2f-sign{font-size:calc(clamp(18px,4.6vw,26px) * var(--fs));font-weight:600;line-height:1.35;max-height:4.2em;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;border-top:1px solid rgba(255,255,255,.18);padding-top:6px}
 .f2f-sign.empty{display:none}
-.f2f-sign::before{content:'🤟 手語';font-size:12px;color:#ffd9a8;font-weight:600}
+.f2f-sign::before{content:'🤟 手語（認錯的詞點一下可改）';font-size:12px;color:#ffd9a8;font-weight:600}
+.f2f-sign .fw,.signlog .fw{cursor:pointer;border-bottom:2px dotted rgba(255,217,168,.7);padding:0 .08em;border-radius:3px}.f2f-sign .fw:active{background:rgba(255,255,255,.18)}
 .f2f-sign .cur{color:#ffb3a8}.f2f-sign small{color:#a9b1c6}
 .f2f-status{position:absolute;left:0;right:0;top:calc(env(safe-area-inset-top) + 74px);margin:0 auto;width:max-content;max-width:90%;z-index:4;padding:6px 14px;border-radius:99px;font-size:14px;color:#1d2130;background:#ffd38a}
 .f2f-bar{flex:none;display:flex;gap:8px;justify-content:center;padding:10px 10px calc(env(safe-area-inset-bottom) + 4px);background:#262b3d}
-.f2f-bar button{font-size:18px;padding:10px 14px;background:#384058;color:#fff;border-color:#4b5470;min-width:48px;justify-content:center;white-space:nowrap}
+.f2f-bar button{font-size:18px;padding:6px 10px 5px;background:#384058;color:#fff;border-color:#4b5470;min-width:48px;justify-content:center;white-space:nowrap;flex-direction:column;gap:1px;line-height:1.1;-webkit-touch-callout:none;user-select:none}
+.f2f-bar button b{font-weight:400}.f2f-bar button span{font-size:11px;color:#cfd5e6}
+.f2f-bar button.primary,.f2f-bar button.rec{flex-direction:row;gap:6px}.f2f-bar button.primary span,.f2f-bar button.rec span{font-size:18px;color:#fff}
 .f2f-bar button.primary{background:var(--gold);color:#fff;border-color:var(--gold);flex:1;max-width:240px;font-weight:700}
 .f2f-bar button.rec{background:var(--brick);border-color:var(--brick);color:#fff;flex:1;max-width:240px}
 #f2fScene{font-size:15px;padding:10px 8px}
-@media (max-width:420px){.f2f-bar{gap:6px;padding-left:6px;padding-right:6px}.f2f-bar button{padding:10px 11px}}
+@media (max-width:420px){.f2f-bar{gap:5px;padding-left:6px;padding-right:6px}.f2f-bar button{padding:6px 7px 5px;min-width:44px}}
 .f2f-ver{flex:none;text-align:center;font-size:10px;color:#7c849c;padding-bottom:calc(env(safe-area-inset-bottom) + 2px);background:#262b3d}
 @media (orientation:landscape){
   #f2f{display:grid;grid-template-columns:1fr minmax(260px,38%);grid-template-rows:1fr auto auto;grid-template-areas:"stage caps" "stage bar" "stage ver"}
   .f2f-stage{grid-area:stage}.f2f-bar{grid-area:bar}.f2f-ver{grid-area:ver}
-  .f2f-caps{grid-area:caps;position:static;padding:14px;background:#1d2130;min-height:0;justify-content:flex-start}
-  .f2f-hear{font-size:calc(clamp(18px,3vw,28px) * var(--fs));max-height:none;align-items:flex-start}
-  .f2f-sign{font-size:calc(clamp(17px,2.6vw,24px) * var(--fs));max-height:none}
+  .f2f-caps{grid-area:caps;position:static;padding:14px;background:#1d2130;min-height:0;justify-content:flex-end;overflow:hidden}
+  .f2f-hear{font-size:calc(clamp(18px,3vw,28px) * var(--fs));flex:1 1 0;min-height:0;max-height:none;align-items:flex-end;-webkit-mask-image:linear-gradient(transparent,#000 1.1em);mask-image:linear-gradient(transparent,#000 1.1em)}
+  .f2f-sign{font-size:calc(clamp(17px,2.6vw,24px) * var(--fs));flex:none;max-height:62%}
   .f2f-pip{width:auto;height:34vh;max-width:none;right:auto;left:calc(env(safe-area-inset-left) + 8px);bottom:8px}
   .f2f-tip{right:auto;left:calc(env(safe-area-inset-left) + 8px);bottom:calc(34vh + 16px)}
   .f2f-lights{left:auto;right:calc(38% + 8px);align-items:flex-end}
-  .f2f-bar{gap:6px}.f2f-bar button{font-size:16px;padding:8px 10px;min-width:42px}
+  .f2f-bar{gap:4px;padding-left:6px;padding-right:6px}.f2f-bar button{font-size:16px;padding:5px 6px 4px;min-width:0;flex:0 1 auto}.f2f-bar button span{font-size:10px}
+  .f2f-bar button.primary,.f2f-bar button.rec{flex:1 0 auto;min-width:76px;padding:5px 8px}.f2f-bar button.primary span,.f2f-bar button.rec span{font-size:16px}
 }
 .stage .realcap{position:absolute;left:50%;bottom:4%;transform:translateX(-50%);background:rgba(30,34,48,.8);color:#fff;font-weight:700;padding:.2em .8em;border-radius:99px;font-size:1.3em}.stage .realcap:empty{display:none}.stage.skel .realcap{display:none}.qbar select{flex:1 1 100%}
 </style>
@@ -589,16 +604,24 @@ body.f2f-on{overflow:hidden}
   </div>
   <div class="f2f-status" id="f2fStatus" hidden></div>
   <div class="f2f-bar">
-    <button class="primary" id="f2fGo">▶ 開始</button>
-    <button id="f2fPause" title="暫停／繼續手譯員">⏸</button>
-    <button id="f2fNext" title="下一句">⏭</button>
-    <button id="f2fScene" title="辨識情境（點一下換）">🏷寒暄</button>
-    <button id="f2fSize" title="字幕大小">Aa</button>
-    <button id="f2fExit" title="離開面對面模式">✕</button>
+    <button class="primary" id="f2fGo"><b>▶</b><span>開始</span></button>
+    <button id="f2fPause" title="暫停／繼續手譯員"><b>⏸</b><span>暫停</span></button>
+    <button id="f2fNext" title="跳到下一句"><b>⏭</b><span>下一句</span></button>
+    <button id="f2fScene" title="辨識情境（點一下換）"><b>🏷</b><span>寒暄</span></button>
+    <button id="f2fSize" title="字幕大小"><b>Aa</b><span>字幕</span></button>
+    <button id="f2fExit" title="離開面對面畫面"><b>✕</b><span>離開</span></button>
   </div>
   <div class="f2f-ver" id="f2fVer"></div>
 </div>
 <div class="toast" id="toast"></div>
+<div class="wpick" id="wordPick" hidden>
+  <div class="wpick-box" role="dialog" aria-label="改正認錯的詞">
+    <div class="wpick-t">這個手勢是哪個詞？<small id="wpNow"></small></div>
+    <div class="wpick-words" id="wpWords"></div>
+    <div class="wpick-more"><button id="wpOther">✏ 其他詞…</button><button id="wpCancel">取消</button></div>
+    <div class="wpick-note">改正會存成這支手機的語料，之後就認得</div>
+  </div>
+</div>
 <script type="module" src="js/app.js"></script>
 </body>
 </html>

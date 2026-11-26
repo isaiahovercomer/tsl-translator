@@ -1,6 +1,6 @@
 // sw.js — 離線快取：程式本身先存起來；模型與語料用到才快取
-const V = 'tsl-v0.18.0';
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'js/app.js', 'js/core.js', 'js/avatar.js', 'js/avatar2d.js', 'js/realplayer.js', 'js/avatar3d.js', 'js/vision.js', 'js/store.js', 'js/gloss.js', 'js/stt.js', 'js/guide.js', 'js/scenes.js', 'js/collect.js', 'js/spot-client.js', 'js/recog-worker.js', 'js/model.js', 'js/offline.js', 'icons/icon.svg', 'icons/icon-192.png'];
+const V = 'tsl-v0.19.0';
+const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'js/app.js', 'js/core.js', 'js/avatar.js', 'js/avatar2d.js', 'js/realplayer.js', 'js/avatar3d.js', 'js/vision.js', 'js/store.js', 'js/gloss.js', 'js/stt.js', 'js/guide.js', 'js/scenes.js', 'js/church.js', 'js/collect.js', 'js/spot-client.js', 'js/recog-worker.js', 'js/model.js', 'js/offline.js', 'icons/icon.svg', 'icons/icon-192.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V && k !== 'tsl-models').map(k => caches.delete(k))))); self.clients.claim(); });
 self.addEventListener('fetch', e => {

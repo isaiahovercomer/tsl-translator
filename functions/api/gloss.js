@@ -2,6 +2,7 @@
 // POST {text, hint?: string[]}  或  GET ?text=…   →  {gloss: string[], model}
 // 做法（參考工研院：文字 → Gloss → 骨架）：從中正辭典 546 句例句挑最像的 10 句當範例，請 AI 照樣改寫。
 // 綁定：wrangler.toml 的 [ai] binding = "AI"（不用 API 金鑰）。可用環境變數 GLOSS_MODEL 換模型。
+import { keepChurch, CHURCH_TERMS } from '../../js/church.js';
 const MODELS = ['@cf/meta/llama-3.3-70b-instruct-fp8-fast', '@cf/meta/llama-3.1-8b-instruct-fast'];
 let EX = null, VOC = null;
 // 異體字（辭典用字和一般寫法不同）：宣布↔宣佈
@@ -39,6 +40,7 @@ const RULES = `你是台灣手語（TSL，自然手語）翻譯員。把中文�
 5. 不比虛詞：的、了、是、在、把、被、嗎、呢、吧、得、著。
 6. 數字放名詞後面：「三本書」→ 書/三。
 7. 盡量用簡單常用的詞；「提示詞」裡有的詞優先照抄。
+8. 召會用語一定照原詞抄，不要換成別的詞：${CHURCH_TERMS.join('、')}。例：弟兄 不是 兄弟、聚會 不是 會／會議、召會 不是 教會、主日 不是 禮拜天。
 只輸出 Gloss 一行，不要解釋。`;
 
 function bigrams(s) { const b = new Set(); for (let i = 0; i + 1 < s.length; i++) b.add(s.slice(i, i + 2)); for (const c of s) b.add(c); return b; }
@@ -75,7 +77,7 @@ export async function onRequest({ request, env }) {
 
   // v=1：舊做法（不給候選詞），評估比較用
   const useCand = new URL(request.url).searchParams.get('v') !== '1';
-  const cache = caches.default, key = new Request(new URL('/api/gloss?c=' + encodeURIComponent(text + '|' + hint.join('/') + (loo ? '|loo' : '') + (useCand ? '|v2' : '') + (new URL(request.url).searchParams.get('model') || '')), request.url).toString());
+  const cache = caches.default, key = new Request(new URL('/api/gloss?c=' + encodeURIComponent(text + '|' + hint.join('/') + (loo ? '|loo' : '') + (useCand ? '|v3' : '') + (new URL(request.url).searchParams.get('model') || '')), request.url).toString());
   const hit = loo ? null : await cache.match(key); if (hit) return hit;
 
   if (!EX) EX = await (await env.ASSETS.fetch(new URL('/corpus/dict/gloss-examples.json', request.url))).json();
@@ -85,7 +87,7 @@ export async function onRequest({ request, env }) {
   if (useCand) {
     if (!VOC) await loadVocab(env, request.url);
     const cand = candidates(text);
-    if (cand.length) extra += `\n（可用手語詞：${cand.join('、')}。這些是語料庫有的手語詞，盡量只用這些；中文詞不在清單裡時，換成清單裡意思相同或相近的詞，或拆成清單裡的幾個詞，例如 住校→住/學校、記者會→記者/會議；不要換成意思比原詞多或不同的詞（男性→男，不要 男性團體；平等 不要換成 等於），也不要加句子沒有的意思；清單裡沒有合適的詞才自己寫。）`;
+    if (cand.length) extra += `\n（可用手語詞：${cand.join('、')}。這些是語料庫有的手語詞，盡量只用這些；中文詞不在清單裡時，換成清單裡意思完全相同的詞，或拆成清單裡的幾個詞，例如 住校→住/學校、記者會→記者/會議；不要換成意思比原詞多或不同的詞（男性→男，不要 男性團體；平等 不要換成 等於），也不要加句子沒有的意思；找不到意思完全相同的詞就照原詞寫（手譯員會把字打出來），不要換成意思不同的詞（弟兄 不要換成 兄弟、聚會 不要換成 會）。召會用語一律照原詞。）`;
   }
   messages.push({ role: 'user', content: text + extra });
 
@@ -94,7 +96,7 @@ export async function onRequest({ request, env }) {
   let lastErr = '';
   for (const model of models) {
     try {
-      let gloss = parse(await run(env, model, messages));
+      let gloss = keepChurch(text, parse(await run(env, model, messages)));   // 召會用語被換掉（弟兄→兄弟、聚會→會）改回原詞
       if (VOC) gloss = gloss.map(fixWord);
       if (gloss.length) {
         const res = json({ gloss, model });

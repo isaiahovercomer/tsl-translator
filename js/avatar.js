@@ -104,7 +104,7 @@ export function drawAvatar(ctx, f, opt = {}) {
   const p = i => OFF.pose + i;
   const skin = opt.skin || '#F2C9A5', shirt = opt.shirt || '#2F3343', line = '#3a2a22';
   ctx.clearRect(0, 0, W, H);
-  if (opt.captionOnly) return drawCaption(ctx, opt.caption, W, H, S);
+  if (opt.captionOnly) return drawCaption(ctx, opt.caption, W, H, S, opt.capScale);
   if (opt.bg) { ctx.fillStyle = opt.bg; ctx.fillRect(0, 0, W, H); }
   if (opt.style) return drawCartoon(ctx, f, opt.style, opt);   // 2D 插畫人像（男女各兩款）
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -136,17 +136,20 @@ export function drawAvatar(ctx, f, opt = {}) {
     ctx.beginPath(); ctx.moveTo(X(p(e)), Y(p(e))); ctx.lineTo(hx0, hy0); ctx.stroke();
     drawHand(ctx, f, h, X, Y, sw, skin, line);
   }
-  drawCaption(ctx, opt.caption, W, H, S);
+  drawCaption(ctx, opt.caption, W, H, S, opt.capScale);
 }
-function drawCaption(ctx, caption, W, H, S) {
+// capScale：面對面模式「Aa 字幕大小」也放大這個詞；太長就縮小到放得下（v0.19，以前長詞會超出畫面被切掉）
+function drawCaption(ctx, caption, W, H, S, capScale = 1) {
   if (caption) {
-    ctx.font = `bold ${Math.round(S * 0.07)}px system-ui, "Noto Sans TC", sans-serif`;
+    const m = S * 0.03, font = fs => `bold ${fs}px system-ui, "Noto Sans TC", sans-serif`;
+    let fs = Math.round(S * 0.07 * capScale); ctx.font = font(fs);
+    while (fs > 12 && ctx.measureText(caption).width + fs * 0.86 > W - 2 * m) { fs = Math.round(fs * 0.9); ctx.font = font(fs); }
     ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(47,51,67,.85)';
-    const tw = ctx.measureText(caption).width + S * 0.06;
+    const tw = ctx.measureText(caption).width + fs * 0.86, bh = fs * 1.29;
     // 很直的畫面（面對面模式、上半身特寫）：詞放右上角，不要蓋住比到腰附近的手
-    const tall = H > W * 1.1, cx = tall ? W - tw / 2 - S * 0.03 : W / 2, y0 = tall ? S * 0.03 : H - S * 0.11;
-    ctx.fillRect(cx - tw / 2, y0, tw, S * 0.09);
-    ctx.fillStyle = '#fff'; ctx.fillText(caption, cx, y0 + S * 0.07);
+    const tall = H > W * 1.1, cx = tall ? W - tw / 2 - m : W / 2, y0 = tall ? m : H - bh - S * 0.02;
+    ctx.fillRect(cx - tw / 2, y0, tw, bh);
+    ctx.fillStyle = '#fff'; ctx.fillText(caption, cx, y0 + fs);
   }
 }
 // 字卡：語料庫沒有的詞，大字打在手譯員胸前（手是放下的，不會擋到）
@@ -217,10 +220,10 @@ export class AvatarPlayer {
     const loop = (ts) => { try { this.tick(ts); } catch (e) { console.warn(e); } requestAnimationFrame(loop); };
     requestAnimationFrame(loop);
   }
-  resize() {
-    const r = this.c.getBoundingClientRect(), d = Math.min(2, window.devicePixelRatio || 1);
-    this.c.width = Math.round(r.width * d); this.c.height = Math.round(r.height * d);
-  }
+  // 畫布實際像素跟顯示大小一致。v0.19：寬「或高」變了都要重設——以前只看寬，
+  // 字幕放大（畫面變矮）、轉手機時高度變了沒跟著改，object-fit:cover 會把字幕／字卡裁掉、跟 3D 人像錯位
+  size() { const r = this.c.getBoundingClientRect(), d = Math.min(2, window.devicePixelRatio || 1); return [Math.max(1, Math.round(r.width * d)), Math.max(1, Math.round(r.height * d))]; }
+  resize() { const [w, h] = this.size(); if (this.c.width !== w) this.c.width = w; if (this.c.height !== h) this.c.height = h; }
   // 3D 人像：給 glb 網址就換成 3D；給空值回到 2D。載入失敗會丟出錯誤（仍維持 2D）
   async set3D(url) {
     if (!url) { if (this.r3d) this.r3d.dispose(); this.r3d = null; return; }
@@ -260,7 +263,7 @@ export class AvatarPlayer {
   stop() { const was = this.timeline.length; this.timeline = []; this.pausedAt = 0; if (was) this.idle(); }
   idle() { setTimeout(() => this.opt.onIdle && this.opt.onIdle(), 0); }
   tick(ts) {
-    if (this.c.width !== Math.round(this.c.getBoundingClientRect().width * Math.min(2, window.devicePixelRatio || 1))) this.resize();
+    if (this.c.offsetParent) { const [w, h] = this.size(); if (this.c.width !== w || this.c.height !== h) this.resize(); }
     let f = this.cur, word = null, card = null;
     if (this.timeline.length) {
       const x = Math.max(0, ((this.pausedAt || ts) - this.t0) / 1000 * FPS * this.speed);
@@ -276,8 +279,9 @@ export class AvatarPlayer {
     if (word !== this.lastWord) { this.lastWord = word; this.onWord(word); }
     if (!this.c.offsetParent) return;          // 分頁沒顯示就不畫，省電
     const caption = card ? '' : word || this.opt.idleCaption || '';
-    if (this.r3d && this.r3d.ready) { this.r3d.render(f); drawAvatar(this.ctx, f, { caption, captionOnly: true }); }
-    else drawAvatar(this.ctx, f, { ...this.opt, style: this.style, caption: this.pausedAt ? '⏸ ' + caption : caption });
+    const capScale = this.capScale || 1;
+    if (this.r3d && this.r3d.ready) { this.r3d.render(f); drawAvatar(this.ctx, f, { caption, captionOnly: true, capScale }); }
+    else drawAvatar(this.ctx, f, { ...this.opt, style: this.style, caption: this.pausedAt ? '⏸ ' + caption : caption, capScale });
     if (card) drawCard(this.ctx, card);
   }
 }

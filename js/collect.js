@@ -278,17 +278,23 @@ export async function upload(loud) {
 const MISS = 'tsl-miss', MISS_P = 'tsl-miss-pend';
 const jget = k => { try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch { return {}; } };
 const jset = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
-export function noteMissing(words) {
+export function noteMissing(words, n = 1) {
   const m = jget(MISS), pend = jget(MISS_P);
   for (const w0 of words) {
     const w = String(w0).trim().slice(0, 12);
     if (!w || /^[\d\s.]+$/.test(w)) continue;   // 純數字不用收集
-    m[w] = (m[w] || 0) + 1; pend[w] = (pend[w] || 0) + 1;
+    m[w] = (m[w] || 0) + n; pend[w] = (pend[w] || 0) + n;
   }
   jset(MISS, m);
   if (SET.help && Object.keys(pend).length >= 10) { jset(MISS_P, {}); addLog({ miss: pend }); } else jset(MISS_P, pend);
 }
 export const localMissing = () => jget(MISS);
+// 語料庫搜尋沒結果 →「加入收集清單」（v0.19）：當成缺了 5 次，排在清單前面；有打開「幫忙改進辨識」就跟辨識紀錄一起上傳
+export function addWish(word) {
+  noteMissing([word], 5);
+  const pend = jget(MISS_P);
+  if (SET.help && Object.keys(pend).length) { jset(MISS_P, {}); addLog({ miss: pend }); }
+}
 // 收集清單：大家常缺的（stats.missing）＋這支手機缺的，次數多的在前，最多 80 個
 function askedWords() {
   const c = {};
