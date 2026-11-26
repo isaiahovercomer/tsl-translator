@@ -1,4 +1,10 @@
-# 交接報告：台灣手語對話翻譯器（2026-11-26 下午，v0.7.4）
+# 交接報告：台灣手語對話翻譯器（2026-11-26 下午，v0.7.5）
+
+## v0.7.5：手語 → 語音改成連續
+- 下拉選單 `speakMode`：連續（比一個詞就唸一個詞，預設）／整句（停下來 2.2 秒唸整句，原本的）／手動。`say()` 排隊唸、不打斷；全部唸完才恢復語音辨識。
+- 逐字稿 `#signLog`：每句一行，正在比的這句即時顯示（紅字），停下來就換行；最多 200 行；「清除」一起清。
+- 之後可加：AI 把手語詞序轉成通順中文再唸（目前唸的是手語詞序）。
+- `window.__tsl.onSign / attachFeats` 給測試用。
 
 ## v0.7.4：使用者選定主播 **女＝vrm-f1（黑長髮 Shino）、男＝vrm-m3（黑短髮 HairSample_Male，帽T調深藍灰）**，都用 A3 扁平色塊
 - 選單只剩：插畫風主播 女／男、簡筆、自訂。其他主播選項刪掉（舊設定自動換成同性別：S.v9）。avatars/ 裡其他 vrm、glb 檔還在（沒刪），之後可清掉。
@@ -76,7 +82,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.7.4
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.7.5
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。

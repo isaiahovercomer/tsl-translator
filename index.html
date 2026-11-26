@@ -75,6 +75,7 @@ label.inline{display:flex;align-items:center;gap:6px}
 details summary{cursor:pointer;font-weight:600}
 code{background:#eee8dc;padding:1px 5px;border-radius:5px}
 .qbar{flex-wrap:wrap;gap:6px}
+.signlog{margin-top:8px;max-height:9.5em;overflow:auto;background:#f6f3ec;border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:1.05em;line-height:1.6}.signlog .cur{color:var(--brick);font-weight:700}
 .verfoot{text-align:center;color:var(--muted);font-size:12px;padding:10px 0 calc(env(safe-area-inset-bottom) + 12px)}
 #pAvatar .stage{background:linear-gradient(#d5e1ec,#b9cad9)}
 .stage.realmode{aspect-ratio:3/4;max-height:72vh;margin:0 auto}.stage video.real{object-fit:contain;background:#dfe8f1;transition:opacity .15s}
@@ -132,11 +133,18 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
       <div class="chips" id="signChips"></div>
       <div class="sentence" id="signSentence"></div>
       <div class="row">
+        <select id="speakMode" title="辨識出來的手語怎麼唸" style="flex:1 1 100%">
+          <option value="word">連續：比一個詞就唸一個詞（不用停）</option>
+          <option value="pause">整句：停下來再唸整句</option>
+          <option value="manual">手動：按「唸出來」才唸</option>
+        </select>
+      </div>
+      <div class="row">
         <button class="primary" id="btnCam">📷 開啟鏡頭</button>
         <button id="btnSpeak">🔊 唸出來</button>
         <button id="btnClear">清除</button>
-        <label class="inline muted"><input type="checkbox" id="autoSpeak" checked>停下來就自動唸</label>
       </div>
+      <div class="signlog" id="signLog" hidden></div>
       <div class="status" id="camStatus"></div>
     </div>
   </div>

@@ -6,14 +6,14 @@ import * as store from './store.js';
 import { toGloss, aiGloss, mapGloss } from './gloss.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.7.4';
+const VERSION = '0.7.5';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms = 2600) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), ms); }
 
 // ---------- 設定 ----------
-const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝', avatarKind: 'vrm-f1', avatarUrl: '', prefCat: 'church', addCat: 'general', glossMode: 'ai', playMode: 'queue' };
+const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝', avatarKind: 'vrm-f1', avatarUrl: '', prefCat: 'church', addCat: 'general', glossMode: 'ai', playMode: 'queue', speakMode: 'word' };
 let S = { ...DEF };
 try { S = { ...DEF, ...JSON.parse(localStorage.getItem('tsl-settings') || '{}') }; } catch {}
 // v0.5：預設改成 2D 插畫人像（之前選 3D 寫實的，換成同性別的 2D）
@@ -235,6 +235,7 @@ function onSign(frames) {
   const ok = res[0].dist <= S.threshold;
   signWords.push({ word: ok ? res[0].word : null, cands: res, frames });
   $('camStatus').textContent = '最接近：' + res.map(r => `${r.word}(${r.dist.toFixed(2)})`).join('、');
+  if (ok && S.speakMode === 'word') say(res[0].word);   // 比一個詞就唸一個詞，不用等停下來
   renderSignChips(); scheduleSentence();
 }
 function renderSignChips() {
@@ -242,6 +243,25 @@ function renderSignChips() {
     ? `<span class="chip known" data-i="${i}">${esc(w.word)}</span>`
     : `<span class="chip unk" data-i="${i}" title="點一下選正確的詞">？${esc(w.cands[0].word)}</span>`).join('');
   $('signSentence').textContent = sentence();
+  renderLog();
+}
+// 逐字稿：之前每一句一行，最後一行是正在比的這句（即時更新）
+const logLines = [];
+function renderLog() {
+  const cur = signWords.map(w => w.word || '？').join('');
+  const el = $('signLog');
+  el.innerHTML = logLines.map(l => `<div>${esc(l)}</div>`).join('') + (cur ? `<div class="cur">${esc(cur)}</div>` : '');
+  el.hidden = !logLines.length && !cur;
+  el.scrollTop = el.scrollHeight;
+}
+// 一句結束（停下來 2 秒多）：這句移到逐字稿、清空詞卡
+function endSentence() {
+  const s = sentence();
+  if (S.speakMode === 'pause' && s) say(s);
+  if (signWords.length) logLines.push(signWords.map(w => w.word || '？').join(''));
+  if (logLines.length > 200) logLines.splice(0, logLines.length - 200);
+  signWords = []; renderSignChips();
+  if (s) $('signSentence').textContent = s;
 }
 $('signChips').onclick = e => {
   const c = e.target.closest('.chip'); if (!c) return;
@@ -257,26 +277,30 @@ $('signChips').onclick = e => {
 const sentence = () => signWords.filter(w => w.word).map(w => w.word).join('');
 function scheduleSentence() {
   clearTimeout(sentenceTimer);
-  sentenceTimer = setTimeout(() => { if ($('autoSpeak').checked && sentence()) speak(sentence()); }, 2200);
+  sentenceTimer = setTimeout(endSentence, 2200);
 }
-function speak(text) {
+// 唸出來：排隊唸（不打斷前一個詞），唸的時候暫停聆聽，避免把自己唸的話又翻成手語
+function say(text, interrupt = false) {
   if (!('speechSynthesis' in window)) { toast('這個瀏覽器不能發出語音'); return; }
-  speechSynthesis.cancel();
+  if (interrupt) speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text); u.lang = 'zh-TW'; u.rate = S.rate;
   const v = speechSynthesis.getVoices().find(v => v.voiceURI === S.voice) || pickVoice(); if (v) u.voice = v;
-  // 唸的時候暫停聆聽，避免把自己唸的話又翻成手語
-  if (listening) { pausedForTTS = true; try { sr.stop(); } catch {} }
-  u.onend = u.onerror = () => { if (pausedForTTS) { pausedForTTS = false; if (listening) try { sr.start(); } catch {} } };
+  if (listening && !pausedForTTS) { pausedForTTS = true; try { sr.stop(); } catch {} }
+  u.onend = u.onerror = () => {
+    setTimeout(() => {   // 全部唸完才恢復聆聽
+      if (pausedForTTS && !speechSynthesis.speaking && !speechSynthesis.pending) { pausedForTTS = false; if (listening) try { sr.start(); } catch {} }
+    }, 150);
+  };
   speechSynthesis.speak(u);
-  signWords = []; setTimeout(() => { $('signChips').innerHTML = ''; }, 300);
-  $('signSentence').textContent = text;
 }
 function pickVoice() {
   const vs = speechSynthesis.getVoices();
   return vs.find(v => /zh[-_]TW/i.test(v.lang)) || vs.find(v => /zh/i.test(v.lang) && /Taiwan|臺灣|台灣/.test(v.name)) || vs.find(v => /zh/i.test(v.lang));
 }
-$('btnSpeak').onclick = () => { const s = sentence() || $('signSentence').textContent; if (s) speak(s); };
-$('btnClear').onclick = () => { signWords = []; renderSignChips(); $('signSentence').textContent = ''; };
+$('btnSpeak').onclick = () => { const s = sentence() || $('signSentence').textContent || logLines[logLines.length - 1]; if (s) say(s.replace(/？/g, ''), true); };
+$('btnClear').onclick = () => { signWords = []; logLines.length = 0; renderSignChips(); $('signSentence').textContent = ''; };
+$('speakMode').value = S.speakMode;
+$('speakMode').onchange = e => { S.speakMode = e.target.value; saveS(); };
 $('btnCam').onclick = async () => {
   if (cam && cam.running) { cam.stop(); $('btnCam').textContent = '📷 開啟鏡頭'; $('camHint').hidden = false; return; }
   $('camStatus').textContent = '載入手勢辨識模型中（第一次約 10–20 秒）…'; $('btnCam').disabled = true;
@@ -562,4 +586,4 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 
 route();
 loadCorpus().then(applyAvatar);
-window.__tsl = { glossTokens, enqueue, real, recog, store, get samples() { return samples; }, playText, loadCorpus, openEditor, player, preview };
+window.__tsl = { onSign, attachFeats, glossTokens, enqueue, real, recog, store, get samples() { return samples; }, playText, loadCorpus, openEditor, player, preview };
