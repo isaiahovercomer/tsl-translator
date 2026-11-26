@@ -12,6 +12,11 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (u.origin !== location.origin) return;
+  // 3D 人像檔與已下載的語料骨架：不會改，快取優先（只下載一次）
+  if (/\/avatars\/|\/corpus\/signs\//.test(u.pathname)) {
+    e.respondWith(caches.open('tsl-models').then(async c => (await c.match(e.request)) || fetch(e.request).then(r => { if (r.ok) c.put(e.request, r.clone()); return r; })));
+    return;
+  }
   // 自己的檔案與語料：網路優先，離線時用快取
   e.respondWith(fetch(e.request).then(r => { if (r.ok) caches.open(V).then(c => c.put(e.request, r.clone())); return r; }).catch(() => caches.match(e.request)));
 });
