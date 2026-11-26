@@ -36834,5 +36834,36 @@
    "q": 0.63
   }
  ],
- "raw": []
+ "raw": [
+  {
+   "id": "4az5fa1hW3Y",
+   "title": "2026秋長老訓練手語晨興聖言第六週週四",
+   "url": "https://www.youtube.com/watch?v=4az5fa1hW3Y",
+   "cat": "church",
+   "file": "raw/church/4az5fa1hW3Y.json",
+   "frames": 4058,
+   "subs": 0,
+   "labeled": 0
+  },
+  {
+   "id": "2nc4EFclIB8",
+   "title": "2026秋長老訓練手語晨興聖言第六週週三",
+   "url": "https://www.youtube.com/watch?v=2nc4EFclIB8",
+   "cat": "church",
+   "file": "raw/church/2nc4EFclIB8.json",
+   "frames": 4405,
+   "subs": 0,
+   "labeled": 0
+  },
+  {
+   "id": "HU3HGdqBS3g",
+   "title": "2026秋長老訓練手語晨興聖言第六週週二",
+   "url": "https://www.youtube.com/watch?v=HU3HGdqBS3g",
+   "cat": "church",
+   "file": "raw/church/HU3HGdqBS3g.json",
+   "frames": 4446,
+   "subs": 0,
+   "labeled": 0
+  }
+ ]
 }
