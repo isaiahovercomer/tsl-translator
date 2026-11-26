@@ -4,16 +4,17 @@ import { AvatarPlayer, normalizeSeq, drawAvatar } from './avatar.js';
 import { Camera, extractFromFile, drawOverlay } from './vision.js';
 import * as store from './store.js';
 import { toGloss, aiGloss, mapGloss, aiFluent } from './gloss.js';
+import { CloudSTT } from './stt.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.8.1';
+const VERSION = '0.9.0';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms = 2600) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), ms); }
 
 // ---------- 設定 ----------
-const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝', avatarKind: 'vrm-f1', avatarUrl: '', prefCat: 'church', addCat: 'general', glossMode: 'ai', playMode: 'queue', speakMode: 'word' };
+const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝', avatarKind: 'vrm-f1', avatarUrl: '', prefCat: 'church', addCat: 'general', glossMode: 'ai', playMode: 'queue', speakMode: 'word', sttEngine: 'cloud' };
 let S = { ...DEF };
 try { S = { ...DEF, ...JSON.parse(localStorage.getItem('tsl-settings') || '{}') }; } catch {}
 // v0.5：預設改成 2D 插畫人像（之前選 3D 寫實的，換成同性別的 2D）
@@ -203,17 +204,44 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'r') $('btnReplay').click();
 });
 
-// 語音辨識（瀏覽器內建，台灣華語）
+// 語音辨識：雲端 Whisper（預設，穩、每句晚 1～3 秒）或瀏覽器內建（即時但容易斷、LINE 裡不能用）
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let sr = null, listening = false, pausedForTTS = false;
+let sr = null, cstt = null, listening = false, pausedForTTS = false;
+const hasApi = !/github\.io$/.test(location.hostname);   // GitHub Pages 備用站沒有 /api
+const showHeard = t => { $('speechText').textContent = t; $('f2fHear').textContent = t; };
+const showInterim = h => { $('speechText').innerHTML = `<span class="muted">${esc(h)}</span>`; $('f2fHear').innerHTML = `<span class="interim">${esc(h)}</span>`; };
+async function startCloud() {
+  cstt = new CloudSTT({
+    onText: t => { showHeard(t); enqueue(t); },
+    onState: (st, n) => {
+      if (st === 'speech') showInterim('🎙️ 聽到聲音…');
+      else if (st === 'recognizing' || (st === 'listening' && n > 0)) showInterim('⏳ 辨識中…');
+    },
+    onError: e => {
+      if (e.status === 404 || e.status === 405 || e.status === 503) {   // 這個網址沒有雲端辨識 → 改用內建
+        toast('雲端語音辨識無法使用，改用瀏覽器內建'); if (cstt) cstt.stop(); cstt = null;
+        if (listening) { listening = false; startBrowser(); }
+      } else toast('語音辨識失敗：' + (e.message || e));
+    },
+  });
+  try { await cstt.start(); listening = true; showInterim('🎤 請說話…'); }
+  catch (e) { cstt = null; toast(e.name === 'NotAllowedError' ? '請允許使用麥克風' : '無法啟動麥克風：' + e.message); }
+  updateListenBtn();
+}
 function startListen() {
-  if (!SR) { toast('這個瀏覽器不支援語音辨識，請用 Chrome 或 Safari'); return; }
+  if (S.sttEngine === 'cloud' && hasApi && navigator.mediaDevices?.getUserMedia) return startCloud();
+  startBrowser();
+}
+const pauseRec = () => { if (cstt) cstt.pause(); else try { sr && sr.stop(); } catch {} };
+const resumeRec = () => { if (cstt) cstt.resume(); else try { sr && sr.start(); } catch {} };
+function startBrowser() {
+  if (!SR) { toast('這個瀏覽器不支援內建語音辨識，請到設定改用「雲端 Whisper」'); return; }
   sr = new SR(); sr.lang = 'zh-TW'; sr.continuous = true; sr.interimResults = true;
   sr.onresult = e => {
     let interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const r = e.results[i];
-      if (r.isFinal) { const t = r[0].transcript.trim(); if (t) { $('speechText').textContent = t; $('f2fHear').textContent = t; enqueue(t); } }
+      if (r.isFinal) { const t = r[0].transcript.trim(); if (t) { showHeard(t); enqueue(t); } }
       else interim += r[0].transcript;
     }
     if (interim) { $('speechText').innerHTML = `<span class="muted">${esc(interim)}…</span>`; $('f2fHear').innerHTML = `<span class="interim">${esc(interim)}…</span>`; }
@@ -223,7 +251,7 @@ function startListen() {
   try { sr.start(); listening = true; } catch (e) { toast('無法啟動麥克風：' + e.message); }
   updateListenBtn();
 }
-function stopListen() { listening = false; try { sr && sr.stop(); } catch {} updateListenBtn(); }
+function stopListen() { listening = false; try { sr && sr.stop(); } catch {} sr = null; if (cstt) { cstt.stop(); cstt = null; } updateListenBtn(); }
 function updateListenBtn() { $('btnListen').textContent = listening ? '⏹ 停止聆聽' : '🎤 開始聆聽'; $('btnListen').classList.toggle('rec', listening); if (typeof f2fUpdate === 'function') f2fUpdate(); }
 $('btnListen').onclick = () => listening ? stopListen() : startListen();
 
@@ -296,10 +324,10 @@ function say(text, interrupt = false) {
   if (interrupt) speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text); u.lang = 'zh-TW'; u.rate = S.rate;
   const v = speechSynthesis.getVoices().find(v => v.voiceURI === S.voice) || pickVoice(); if (v) u.voice = v;
-  if (listening && !pausedForTTS) { pausedForTTS = true; try { sr.stop(); } catch {} }
+  if (listening && !pausedForTTS) { pausedForTTS = true; pauseRec(); }
   u.onend = u.onerror = () => {
     setTimeout(() => {   // 全部唸完才恢復聆聽
-      if (pausedForTTS && !speechSynthesis.speaking && !speechSynthesis.pending) { pausedForTTS = false; if (listening) try { sr.start(); } catch {} }
+      if (pausedForTTS && !speechSynthesis.speaking && !speechSynthesis.pending) { pausedForTTS = false; if (listening) resumeRec(); }
     }, 150);
   };
   speechSynthesis.speak(u);
@@ -632,7 +660,7 @@ function fillSettings() {
   $('rate').value = S.rate; $('rtVal').textContent = S.rate + '×'; $('aliases').value = S.aliases;
   if (!['vrm-f1', 'vrm-m3', '2d', 'custom'].includes(S.avatarKind)) S.avatarKind = /(^|-)m(\d|ale|$)/.test(S.avatarKind) ? 'vrm-m3' : 'vrm-f1';
   $('playMode').value = S.playMode;
-  $('prefCat').value = S.prefCat; $('addCat').value = S.addCat; $('glossMode').value = S.glossMode;
+  $('prefCat').value = S.prefCat; $('addCat').value = S.addCat; $('glossMode').value = S.glossMode; $('sttEngine').value = S.sttEngine;
   $('avatarKind').value = S.avatarKind; $('avatarUrl').value = S.avatarUrl; $('avatarUrl').hidden = S.avatarKind !== 'custom';
   const vs = ('speechSynthesis' in window) ? speechSynthesis.getVoices().filter(v => /zh/i.test(v.lang)) : [];
   $('voice').innerHTML = '<option value="">自動（台灣華語優先）</option>' + vs.map(v => `<option value="${esc(v.voiceURI)}" ${v.voiceURI === S.voice ? 'selected' : ''}>${esc(v.name)}（${esc(v.lang)}）</option>`).join('');
@@ -641,7 +669,7 @@ for (const [id, out, suf] of [['threshold', 'thVal', ''], ['avatarSpeed', 'spVal
 $('saveSettings').onclick = () => {
   const old = S.avatarKind + S.avatarUrl;
   S = { ...S, threshold: +$('threshold').value, avatarSpeed: +$('avatarSpeed').value, voice: $('voice').value, rate: +$('rate').value, aliases: $('aliases').value,
-    avatarKind: $('avatarKind').value, avatarUrl: $('avatarUrl').value.trim(), prefCat: $('prefCat').value, addCat: $('addCat').value, glossMode: $('glossMode').value };
+    avatarKind: $('avatarKind').value, avatarUrl: $('avatarUrl').value.trim(), prefCat: $('prefCat').value, addCat: $('addCat').value, glossMode: $('glossMode').value, sttEngine: $('sttEngine').value };
   saveS();
   player.speed = real.speed = S.avatarSpeed; toast('已儲存');
   if (S.avatarKind + S.avatarUrl !== old) applyAvatar();
