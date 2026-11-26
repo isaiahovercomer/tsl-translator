@@ -1,0 +1,85 @@
+name: 匯入台灣手語線上辭典（中正大學）
+
+# 手動執行：Actions → 匯入台灣手語線上辭典 → Run workflow
+# 3500 個詞條分 12 份同時處理（影片下載→抽骨架→刪影片），最後合併成一次提交。
+on:
+  workflow_dispatch:
+    inputs:
+      shards:
+        description: 分幾份同時跑（最多 20）
+        default: '12'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: corpus-ingest
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      shards: ${{ steps.p.outputs.shards }}
+    steps:
+      - id: p
+        run: |
+          n=${{ inputs.shards }}
+          echo "shards=$(python3 -c "import json;print(json.dumps(list(range($n))))")" >> "$GITHUB_OUTPUT"
+
+  extract:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+      - run: pip install -r tools/requirements.txt
+      - name: 模型快取
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/tsl-models
+          key: tsl-models-v1
+      - name: 抽骨架（第 ${{ matrix.shard }} 份）
+        run: python tools/ccu_dict.py extract --shard ${{ matrix.shard }} --of ${{ inputs.shards }} --out out/${{ matrix.shard }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ccu-${{ matrix.shard }}
+          path: out/${{ matrix.shard }}
+          retention-days: 3
+
+  merge:
+    needs: extract
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install numpy
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          pattern: ccu-*
+      - name: 合併、算辨識特徵
+        run: |
+          python tools/ccu_dict.py merge out/*
+          node tools/build_feats.mjs
+      - name: 存回 repo
+        run: |
+          git config user.name "tsl-corpus-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add corpus
+          git diff --cached --quiet || (git commit -m "語料：匯入台灣手語線上辭典（中正大學）" && git pull --rebase && git push)

@@ -15,7 +15,7 @@
 | YouTube：邊播邊擷取 | 電腦版 Chrome／Edge，擷取分頁畫面即時抽骨架 |
 | YouTube：送雲端 | GitHub Actions（`tools/ingest.py`），需 repo secret `YT_COOKIES`，否則會被 YouTube 擋 |
 
-本機語料存在 IndexedDB；「上傳到共用語料庫」會下載語料檔並開 GitHub issue（標題 `[語料]`），把檔案拖進去送出，Actions 自動寫進 `corpus/`。
+共用語料只先下載清單（`corpus/index.json`），骨架用到才下載；辨識特徵預先算好放 `corpus/feats.json`（`tools/build_feats.mjs`），開鏡頭時才載入。本機語料存在 IndexedDB；「上傳到共用語料庫」會下載語料檔並開 GitHub issue（標題 `[語料]`），把檔案拖進去送出，Actions 自動寫進 `corpus/`。
 
 ## 語料分類
 - **一般生活用語**（`general`）、**召會生活用語**（`cat: church`，例如江啟禎弟兄的主恢復手語影片）。
@@ -23,7 +23,8 @@
 - 對話時同一個詞兩類都有，依設定優先用其中一類（預設召會生活用語）。
 
 ## 參考資源（站在前人的基礎上）
-- [台灣手語線上辭典](https://twtsl.ccu.edu.tw/)（中正大學，第五版 4600 詞、560 例句，©中正大學手語語言學台灣研究中心，All Rights Reserved）：網站內連結查詢；要把骨架收進共用語料庫需先取得授權（Lngsign@ccu.edu.tw）。
+- [台灣手語線上辭典](https://twtsl.ccu.edu.tw/)（中正大學，第五版 4600 詞、560 例句）：已溝通同意使用。`tools/ccu_dict.py` + Actions「匯入台灣手語線上辭典」把 3500 個詞條影片轉成骨架（影片不保存），同義詞放 `syn`、例句（手語語序↔中文）放 `corpus/dict/ccu-meta.json`。
+  引用：蔡素娟、戴浩一、劉世凱、陳怡君。2026。《台灣手語線上辭典（中文版第五版）》。嘉義：國立中正大學手語語言學台灣研究中心。
 - 台灣手語語料庫（文化部委託中正大學，132 支影片、約 2 萬詞，有 Gloss 對照）：AI 詞序的訓練資料來源，需申請。
 - 工研院＋公視 AI 手語氣象主播、新竹市 AI 手語翻譯（2026/11）：文字 → 手語詞序（Gloss，LLM）→ 骨架 → 人像，同樣架構。
 

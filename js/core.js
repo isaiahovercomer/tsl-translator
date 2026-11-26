@@ -155,6 +155,17 @@ export function frameFeat(f, ref) {
 }
 
 export const NSEQ = 16;
+// 特徵壓縮成 Int8（共用語料預先算好放 corpus/feats.json，免得一次下載全部骨架）
+const FQ = 40;
+export function encodeFeat(seq) {
+  const a = new Int8Array(NSEQ * D);
+  seq.forEach((v, i) => { for (let k = 0; k < D; k++) a[i * D + k] = Math.max(-127, Math.min(127, Math.round(v[k] * FQ))); });
+  return b64(new Uint8Array(a.buffer));
+}
+export function decodeFeat(str) {
+  const u = unb64(str), a = new Int8Array(u.buffer, u.byteOffset, u.byteLength);
+  return Array.from({ length: NSEQ }, (_, i) => Float32Array.from(a.subarray(i * D, (i + 1) * D), x => x / FQ));
+}
 // 一段影格 → 固定 16 格的特徵序列（以整段平均身體基準正規化）
 export function seqFeat(frames) {
   const refs = frames.map(bodyRef).filter(Boolean);
@@ -187,8 +198,9 @@ export function dtw(A, B, band = 4) {
 // ---- 辨識器：每個詞取最近的樣本（k 近鄰） ----
 export class Recognizer {
   constructor() { this.items = []; }
+  // 有 _feat（預先算好的特徵，共用語料）就直接用；本機語料現算
   setSamples(samples) {
-    this.items = samples.map(s => ({ word: s.word, id: s.id, feat: seqFeat(sampleFrames(s)) }));
+    this.items = samples.filter(s => s._feat || s.data).map(s => ({ word: s.word, id: s.id, feat: s._feat || seqFeat(sampleFrames(s)) }));
   }
   get words() { return [...new Set(this.items.map(i => i.word))]; }
   classify(frames, topN = 3) {

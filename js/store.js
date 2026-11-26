@@ -27,12 +27,22 @@ export async function sharedIndex() {
   try { const r = await fetch('corpus/index.json', { cache: 'no-cache' }); return r.ok ? await r.json() : { signs: [], raw: [] }; }
   catch { return { signs: [], raw: [] }; }
 }
-export async function sharedSamples(index) {
-  const out = [];
-  await Promise.all((index.signs || []).map(async e => {
-    try { const r = await fetch('corpus/' + e.file); if (r.ok) { const s = await r.json(); out.push({ ...s, cat: s.cat || e.cat || 'general', shared: true }); } } catch {}
-  }));
-  return out;
+// 共用語料很多（辭典 3500 詞）：先只用清單，骨架用到才下載（loadSample）
+export function sharedSamples(index) {
+  return (index.signs || []).map(e => ({ ...e, cat: e.cat || 'general', shared: true, stub: true }));
+}
+const loading = new Map();
+export function loadSample(s) {
+  if (s.data) return Promise.resolve(s);
+  // 用 id 快取下載結果；重新載入語料清單後是新的物件，所以每次都把資料補到這個物件上
+  if (!loading.has(s.id)) loading.set(s.id, fetch('corpus/' + s.file).then(r => { if (!r.ok) throw new Error('讀不到語料 ' + s.word); return r.json(); })
+    .catch(e => { loading.delete(s.id); throw e; }));
+  return loading.get(s.id).then(j => Object.assign(s, j, { shared: true, stub: false, cat: s.cat }));
+}
+// 共用語料的辨識特徵（預先算好）：開鏡頭辨識時才下載
+let featsP = null;
+export function sharedFeats() {
+  return featsP || (featsP = fetch('corpus/feats.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({})));
 }
 export async function rawTrack(entry) {
   const r = await fetch('corpus/' + entry.file); if (!r.ok) throw new Error('讀不到這段影片的骨架資料'); return r.json();

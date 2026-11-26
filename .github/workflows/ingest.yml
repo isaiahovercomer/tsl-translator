@@ -64,6 +64,11 @@ jobs:
             python tools/ingest.py issue
           fi
           echo "status=$?" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 更新辨識特徵
+        run: node tools/build_feats.mjs
       - name: 存回 repo
         run: |
           git config user.name "tsl-corpus-bot"

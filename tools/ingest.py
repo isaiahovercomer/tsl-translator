@@ -55,6 +55,9 @@ def extract(video_path, progress=True):
     hand = vision.HandLandmarker.create_from_options(vision.HandLandmarkerOptions(
         base_options=BaseOptions(model_asset_path=model('hand')), running_mode=V, num_hands=2,
         min_hand_detection_confidence=0.4, min_hand_presence_confidence=0.4))
+    hand2 = vision.HandLandmarker.create_from_options(vision.HandLandmarkerOptions(   # 裁切放大用（逐張找，不追蹤）
+        base_options=BaseOptions(model_asset_path=model('hand')), running_mode=vision.RunningMode.IMAGE, num_hands=2,
+        min_hand_detection_confidence=0.2, min_hand_presence_confidence=0.2))
     face = vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(
         base_options=BaseOptions(model_asset_path=model('face')), running_mode=V, num_faces=1))
     cap = cv2.VideoCapture(str(video_path))
@@ -80,14 +83,51 @@ def extract(video_path, progress=True):
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         mimg = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
         ts = int(t * 1000)
-        pr, hr, fr = pose.detect_for_video(mimg, ts), hand.detect_for_video(mimg, ts), face.detect_for_video(mimg, ts)
-        frames.append(to_frame(pr.pose_landmarks[0] if pr.pose_landmarks else None, hr.hand_landmarks,
-                               fr.face_landmarks[0] if fr.face_landmarks else None))
+        pr, fr = pose.detect_for_video(mimg, ts), face.detect_for_video(mimg, ts)
+        pl = pr.pose_landmarks[0] if pr.pose_landmarks else None
+        hands = hand.detect_for_video(mimg, ts).hand_landmarks
+        if pl is not None and len(hands) < 2:   # 人在畫面裡太小：裁出上半身放大再找一次
+            more = hand_in_crop(hand2, rgb, pl, mp)
+            hands = (list(hands) + [h for h in more if all(math.dist((h[0].x, h[0].y), (g[0].x, g[0].y)) > 0.03 for g in hands)])[:2]
+        frames.append(to_frame(pl, hands, fr.face_landmarks[0] if fr.face_landmarks else None))
         if progress and len(frames) % 150 == 0:
             print(f'  {t:.0f} 秒 / {total / src_fps:.0f} 秒', flush=True)
     cap.release()
-    for m in (pose, hand, face):
+    for m in (pose, hand, hand2, face):
         m.close()
+    return fill_gaps(frames)
+
+
+class _P:
+    __slots__ = ('x', 'y', 'z')
+    def __init__(self, x, y, z): self.x, self.y, self.z = x, y, z
+
+
+def hand_in_crop(hand, rgb, pl, mp, k=2.8, out=512):
+    """以肩膀為中心裁出上半身、放大到 512×512 再找手（小人像、舊影片的手才找得到），座標換回整張畫面。"""
+    import cv2
+    h, w = rgb.shape[:2]
+    ls, rs = pl[11], pl[12]
+    cx, cy = (ls.x + rs.x) / 2 * w, (ls.y + rs.y) / 2 * h
+    sw = max(math.dist((ls.x * w, ls.y * h), (rs.x * w, rs.y * h)), 30)
+    size = min(max(sw * k, 120), max(w, h) * 1.2)
+    x0, y0 = cx - size / 2, cy - size * 0.45
+    sc = out / size
+    crop = cv2.warpAffine(rgb, np.float32([[sc, 0, -x0 * sc], [0, sc, -y0 * sc]]), (out, out), flags=cv2.INTER_CUBIC)
+    r = hand.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(crop)))
+    return [[_P((x0 + q.x * size) / w, (y0 + q.y * size) / h, q.z * size / w) for q in lm] for lm in r.hand_landmarks]
+
+
+def fill_gaps(frames, max_gap=8):
+    """手偶爾沒偵測到（模糊、轉側面）：前後都有時，中間最多 8 格用線性內插補上。"""
+    for off in (OFF_LH, OFF_RH):
+        sl = slice(off * 3, (off + 21) * 3)
+        have = [i for i, f in enumerate(frames) if not np.isnan(f[off * 3])]
+        for a, b in zip(have, have[1:]):
+            if 1 < b - a <= max_gap + 1:
+                for i in range(a + 1, b):
+                    t = (i - a) / (b - a)
+                    frames[i][sl] = frames[a][sl] * (1 - t) + frames[b][sl] * t
     return frames
 
 

@@ -1,10 +1,10 @@
 // app.js — 介面與流程
-import { FPS, CATS, catOf, Recognizer, Segmenter, tokenize, makeSample, sampleFrames, sampleAspect, estimateAspect, decodeFrames, handsActive as handsUp } from './core.js';
+import { FPS, CATS, catOf, decodeFeat, Recognizer, Segmenter, tokenize, makeSample, sampleFrames, sampleAspect, estimateAspect, decodeFrames, handsActive as handsUp } from './core.js';
 import { AvatarPlayer, normalizeSeq, drawAvatar } from './avatar.js';
 import { Camera, extractFromFile, drawOverlay } from './vision.js';
 import * as store from './store.js';
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -30,13 +30,22 @@ addEventListener('hashchange', route);
 let samples = [], index = { signs: [], raw: [] };
 const recog = new Recognizer();
 let byWord = new Map();
+let featsReady = false;
+async function attachFeats() {
+  const feats = await store.sharedFeats(); featsReady = true;
+  for (const s of samples) if (s.shared && feats[s.id] && !s._feat) s._feat = decodeFeat(feats[s.id]);
+  recog.setSamples(samples.filter(s => s._feat || !s.shared));
+}
 async function loadCorpus() {
   index = await store.sharedIndex();
-  const [shared, local] = await Promise.all([store.sharedSamples(index), store.localAll()]);
+  const shared = store.sharedSamples(index), local = await store.localAll();
   samples = [...shared, ...local];
   byWord = new Map();
-  for (const s of samples) { if (!byWord.has(s.word)) byWord.set(s.word, []); byWord.get(s.word).push(s); }
-  recog.setSamples(samples);
+  const add = (w, s) => { if (!w) return; if (!byWord.has(w)) byWord.set(w, []); byWord.get(w).push(s); };
+  for (const s of samples) { add(s.word, s); for (const w of s.syn || []) if (w !== s.word) add(w, s); }   // 同義詞也找得到
+  // 辨識：本機語料現算；共用語料用預先算好的特徵（開鏡頭時才載入）
+  recog.setSamples([...local, ...shared.filter(s => s._feat)]);
+  if (featsReady) attachFeats();
   renderCorpus(); renderRaw();
   $('avatarStatus').textContent = `語料庫：${byWord.size} 個詞、${samples.length} 筆樣本`;
 }
@@ -59,17 +68,20 @@ async function applyAvatar() {
   $('avatarStatus').textContent = `語料庫：${byWord.size} 個詞、${samples.length} 筆樣本`;
 }
 let lastTokens = [];
-function playText(text) {
+async function playText(text) {
   const toks = tokenize(text, [...byWord.keys()], aliasMap());
   lastTokens = toks;
   $('speechChips').innerHTML = toks.map((t, i) => t.known
     ? `<span class="chip known" data-i="${i}">${esc(t.text)}${t.word !== t.text ? `<small>${esc(t.word)}</small>` : ''}</span>`
     : `<a class="chip" data-i="${i}" href="${dictUrl(t.text)}" target="_blank" rel="noopener" title="語料庫還沒有，點一下查台灣手語線上辭典">${esc(t.text)}</a>`).join('');
-  const items = toks.filter(t => t.known).map(t => {
+  const picks = toks.filter(t => t.known).map(t => {
     const all = byWord.get(t.word), pref = all.filter(s => catOf(s) === S.prefCat), list = pref.length ? pref : all;
-    const s = list[Math.floor(Math.random() * list.length)];
-    return { word: t.word, frames: sampleFrames(s), aspect: sampleAspect(s) };
+    // 本機錄的優先（通常比較清楚），其次手部偵測品質好的
+    const best = [...list].sort((a, b) => (b.shared ? 0 : 1) - (a.shared ? 0 : 1) || (b.q || 0.5) - (a.q || 0.5));
+    return { word: t.word, s: best[0] };
   });
+  const loaded = await Promise.all(picks.map(p => store.loadSample(p.s).catch(() => null)));
+  const items = picks.filter((p, i) => loaded[i]).map(p => ({ word: p.word, frames: sampleFrames(p.s), aspect: sampleAspect(p.s) }));
   if (items.length) player.play(items);
   else if (text.trim()) $('avatarStatus').textContent = '語料庫裡還沒有這些詞，先到「新增語料」錄起來。';
 }
@@ -161,6 +173,7 @@ $('btnClear').onclick = () => { signWords = []; renderSignChips(); $('signSenten
 $('btnCam').onclick = async () => {
   if (cam && cam.running) { cam.stop(); $('btnCam').textContent = '📷 開啟鏡頭'; $('camHint').hidden = false; return; }
   $('camStatus').textContent = '載入手勢辨識模型中（第一次約 10–20 秒）…'; $('btnCam').disabled = true;
+  attachFeats();
   const ov = $('camOverlay').getContext('2d');
   cam = new Camera($('camVideo'), (f, r) => {
     sizeTo($('camOverlay'), $('camVideo')); drawOverlay(ov, r, false);
@@ -197,10 +210,10 @@ function renderSamples() {
   $('wordTitle').innerHTML = list ? `「${esc(selWord)}」 <a class="muted" style="font-size:14px" href="${dictUrl(selWord)}" target="_blank" rel="noopener">📖 對照辭典</a>` : '選一個詞預覽';
   $('sampleList').innerHTML = list ? list.map((s, i) => `<div><span class="tag ${s.shared ? '' : 'local'}">${s.shared ? '共用' : '本機'}</span>
     ${s.shared ? `<span class="tag ${catOf(s)}">${CATS[catOf(s)]}</span>` : `<button class="tag ${catOf(s)}" data-cat="${i}" title="點一下切換分類">${CATS[catOf(s)]}</button>`}
-    <span class="grow">${(s.frames / (s.fps || FPS)).toFixed(1)} 秒・${esc(srcLabel(s.src))}</span>
+    <span class="grow">${s.frames ? (s.frames / (s.fps || FPS)).toFixed(1) + ' 秒・' : ''}${esc(srcLabel(s.src))}${s.variant && s.variant !== s.word ? '（' + esc(s.variant) + '）' : ''}</span>
     <button data-play="${i}">▶</button>${s.shared ? '' : `<button data-del="${i}">刪除</button>`}</div>`).join('') : '';
 }
-const srcLabel = s => !s ? '' : s.startsWith('youtube') ? 'YouTube' : s === 'camera' ? '鏡頭錄製' : s === 'upload' ? '上傳影片' : s === 'correction' ? '對話中改正' : s;
+const srcLabel = s => !s ? '' : s.startsWith('ccu:') ? '台灣手語線上辭典' : s.startsWith('youtube') ? 'YouTube' : s === 'camera' ? '鏡頭錄製' : s === 'upload' ? '上傳影片' : s === 'correction' ? '對話中改正' : s;
 $('sampleList').onclick = async e => {
   const list = byWord.get(selWord); if (!list) return;
   if (e.target.dataset.play) playSample(list[e.target.dataset.play]);
@@ -210,7 +223,7 @@ $('sampleList').onclick = async e => {
   }
   if (e.target.dataset.del) { await store.localDel(list[e.target.dataset.del].id); toast('已刪除'); await loadCorpus(); }
 };
-function playSample(s) { preview.play([{ word: s.word, frames: sampleFrames(s), aspect: sampleAspect(s) }], false); }
+async function playSample(s) { await store.loadSample(s); preview.play([{ word: s.word, frames: sampleFrames(s), aspect: sampleAspect(s) }], false); }
 $('btnExport').onclick = async () => {
   const local = await store.localAll();
   if (!local.length) return toast('本機沒有語料');
@@ -386,7 +399,8 @@ $('edAdd').onclick = async () => {
   await store.localPut(makeSample(w, ed.frames.slice(ed.a, ed.b + 1), ed.src, { t: [ed.a / FPS, ed.b / FPS], aspect: ed.aspect, cat: $('edCat').value }));
   toast(`已加入「${w}」`); $('edWord').value = ''; await loadCorpus();
 };
-function autoSegments() {
+async function autoSegments() {
+  if (!featsReady) await attachFeats();
   const out = []; const sg = new Segmenter(fr => out.push(fr));
   // 用索引記錄每段位置
   ed.frames.forEach((f, i) => { f._i = i; sg.push(f); }); sg.flush();
