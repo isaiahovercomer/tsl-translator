@@ -22,6 +22,9 @@ on:
       category:
         description: 分類（church＝召會生活用語、general＝一般生活用語）
         default: church
+      redo_nosubs:
+        description: 已匯入但沒有字幕的影片重做一次（true／false）
+        default: 'true'
 
 permissions:
   contents: write
@@ -45,7 +48,7 @@ jobs:
       - name: 列出影片
         env:
           YT_COOKIES: ${{ secrets.YT_COOKIES }}
-        run: python tools/yt_batch.py list "${{ inputs.url }}" --match "${{ inputs.match }}" --max ${{ inputs.max }} --out list.json
+        run: python tools/yt_batch.py list "${{ inputs.url }}" --match "${{ inputs.match }}" --max ${{ inputs.max }} --out list.json $([ "${{ inputs.redo_nosubs }}" = "true" ] && echo --redo-nosubs)
       - uses: actions/upload-artifact@v4
         with:
           name: yt-list
@@ -72,7 +75,7 @@ jobs:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: tools/requirements.txt
-      - run: pip install -r tools/requirements.txt && pip install -U "yt-dlp[default]"
+      - run: pip install -r tools/requirements.txt && pip install -U "yt-dlp[default]" rapidocr-onnxruntime
       - uses: denoland/setup-deno@v2
       - name: 模型快取
         uses: actions/cache@v4

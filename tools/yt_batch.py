@@ -35,7 +35,7 @@ def ydl_opts(tmp, **kw):
 def cmd_list(a):
     import yt_dlp
     ix = ingest.load_index()
-    done = {r['id'] for r in ix.get('raw', [])}
+    done = {r['id'] for r in ix.get('raw', []) if r.get('subs') or not a.redo_nosubs}
     with tempfile.TemporaryDirectory() as tmp, yt_dlp.YoutubeDL(ydl_opts(tmp, extract_flat='in_playlist')) as y:
         info = y.extract_info(a.url, download=False)
     entries = []
@@ -112,6 +112,55 @@ def pick_subs(tmp, vid):
     return best.name[len(vid) + 1:-4], parse_vtt(best.read_text('utf-8', errors='ignore'))
 
 
+# ---------- 燒在畫面上的字幕：OCR ----------
+def ocr_subs(video_path, step=0.5, width=960):
+    """每 0.5 秒讀一次畫面上的中文字（rapidocr），去掉一直都在的字（標題、浮水印），
+    連續相同的字合併成一句 → [[開始, 結束, 文字]]。"""
+    import cv2
+    from rapidocr_onnxruntime import RapidOCR
+    ocr = RapidOCR()
+    cap = cv2.VideoCapture(str(video_path))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30
+    n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    samples = []   # (秒, [(文字, y中心比例)])
+    t = 0.0
+    while True:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(t * fps))
+        ok, img = cap.read()
+        if not ok:
+            break
+        h, w = img.shape[:2]
+        if w > width:
+            img = cv2.resize(img, (width, int(h * width / w)))
+        res, _ = ocr(img)
+        lines = []
+        for box, txt, conf in res or []:
+            txt = re.sub(r'\s+', '', txt)
+            if float(conf) < 0.6 or not re.search(r'[\u4e00-\u9fff]', txt):
+                continue
+            yc = sum(p[1] for p in box) / 4 / img.shape[0]
+            lines.append((txt, yc))
+        samples.append((round(t, 2), lines))
+        t += step
+        if n and t * fps >= n:
+            break
+    cap.release()
+    if not samples:
+        return []
+    # 一直出現的字（超過 40% 的畫面）是標題或浮水印，不算字幕
+    from collections import Counter
+    freq = Counter(txt for _, ls in samples for txt in {x[0] for x in ls})
+    static = {k for k, v in freq.items() if v > 0.4 * len(samples)}
+    out = []
+    for t, ls in samples:
+        txt = ''.join(x[0] for x in sorted(ls, key=lambda x: x[1]) if x[0] not in static)
+        if out and txt == out[-1][2] and t - out[-1][1] <= step * 1.5:
+            out[-1][1] = round(t + step, 2)
+        elif txt:
+            out.append([t, round(t + step, 2), txt])
+    return [c for c in out if c[1] - c[0] >= 0.9 or len(c[2]) <= 3]
+
+
 # ---------- 2. 抽骨架（一份） ----------
 def cmd_extract(a):
     import yt_dlp
@@ -130,6 +179,9 @@ def cmd_extract(a):
                     info = y.extract_info(e['url'], download=True)
                 lang, subs = pick_subs(tmp, info['id'])
                 path = next(p for p in Path(tmp).glob(f"{info['id']}.*") if p.suffix not in ('.txt', '.vtt'))
+                if not subs:   # 沒有 CC 字幕：讀燒在畫面上的字
+                    print(f"[{a.shard}] {info.get('title')}：沒有 CC 字幕，OCR 讀畫面字幕…", flush=True)
+                    subs = ocr_subs(path); lang = 'ocr' if subs else None
                 print(f"[{a.shard}] {info.get('title')}：字幕 {lang or '無'}（{len(subs)} 句），抽骨架…", flush=True)
                 frames = ingest.extract(path)
             raw = {'v': 1, 'videoId': vid, 'title': info.get('title') or e['title'], 'url': e['url'], 'cat': a.cat, 'fps': ingest.FPS,
@@ -181,7 +233,7 @@ def main():
     sp = ap.add_subparsers(dest='cmd', required=True)
     p = sp.add_parser('list'); p.add_argument('url'); p.add_argument('--match', default='')
     p.add_argument('--max', type=int, default=20); p.add_argument('--out', default='list.json')
-    p.add_argument('--redo', action='store_true'); p.add_argument('--oldest-first', action='store_true')
+    p.add_argument('--redo', action='store_true'); p.add_argument('--redo-nosubs', action='store_true'); p.add_argument('--oldest-first', action='store_true')
     p = sp.add_parser('extract'); p.add_argument('--list', required=True); p.add_argument('--shard', type=int, default=0)
     p.add_argument('--of', type=int, default=1); p.add_argument('--cat', default='church', choices=ingest.CATS); p.add_argument('--out', required=True)
     p = sp.add_parser('merge'); p.add_argument('dirs', nargs='+')
