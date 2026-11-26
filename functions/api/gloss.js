@@ -21,7 +21,7 @@ function candidates(text, k = 120) {
     let n = 0; for (const c of new Set(w)) if (chars.has(c)) n++;
     if (!n) continue;
     const frac = n / w.length;
-    if (frac < 0.5) continue;
+    if (frac < 0.6 && !t.includes(w)) continue;   // 2 字詞共用 1 字可以；4 字詞只共用 2 字（男性→男性團體）不要
     out.push([(t.includes(w) ? 100 : 0) + n * 2 + frac - w.length * 0.01, w]);
   }
   return out.sort((a, b) => b[0] - a[0]).slice(0, k).map(x => x[1]);
@@ -85,7 +85,7 @@ export async function onRequest({ request, env }) {
   if (useCand) {
     if (!VOC) await loadVocab(env, request.url);
     const cand = candidates(text);
-    if (cand.length) extra += `\n（可用手語詞：${cand.join('、')}。這些是語料庫有的手語詞，盡量只用這些；中文詞不在清單裡時，換成清單裡意思相同或相近的詞，或拆成清單裡的幾個詞，例如 住校→住/學校、記者會→記者/會議；清單裡沒有合適的詞才自己寫。）`;
+    if (cand.length) extra += `\n（可用手語詞：${cand.join('、')}。這些是語料庫有的手語詞，盡量只用這些；中文詞不在清單裡時，換成清單裡意思相同或相近的詞，或拆成清單裡的幾個詞，例如 住校→住/學校、記者會→記者/會議；不要換成意思比原詞多或不同的詞（男性→男，不要 男性團體；平等 不要換成 等於），也不要加句子沒有的意思；清單裡沒有合適的詞才自己寫。）`;
   }
   messages.push({ role: 'user', content: text + extra });
 
