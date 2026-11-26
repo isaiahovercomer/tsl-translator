@@ -19,8 +19,13 @@ function toTrad(s) {
 }
 // Whisper 在安靜或雜音時常見的幻覺句（影片字幕的結尾語）
 const JUNK = /(字幕|訂閱|订阅|點贊|点赞|點讚|按讚|轉發|打賞|感謝(您的)?(觀看|收看)|谢谢观看|請不吝|明鏡|Amara|subtitle|MING PAO|優優獨播|小鈴鐺|欄目|by\s)/i;
+// 召會用語常被聽成的同音字
+const FIX = [['招會', '召會'], ['照會裡', '召會裡'], ['小牌', '小排'], ['晨星聖言', '晨興聖言'], ['晨性', '晨興'], ['陳興', '晨興'], ['生命獨經', '生命讀經'], ['恢復版', '恢復本'], ['受進', '受浸'], ['阿門', '阿們'], ['姐妹', '姊妹'], ['哈里路亞', '哈利路亞']];
+const PUNC = { ',': '，', '?': '？', '!': '！', ':': '：', ';': '；' };
 function clean(t) {
   t = toTrad(String(t || '').replace(/\s+/g, ' ').trim());
+  t = t.replace(/[,?!:;]/g, c => PUNC[c]).replace(/\.$/, '。');
+  for (const [a, b] of FIX) if (t.includes(a)) t = t.split(a).join(b);
   if (!t || JUNK.test(t)) return '';
   if (t === TERMS || t.startsWith('以下是台灣華語')) return '';          // 把提示詞原樣吐回來
   if (/^[\p{P}\s。，、！？…]+$/u.test(t)) return '';
