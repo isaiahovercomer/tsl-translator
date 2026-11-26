@@ -1,0 +1,82 @@
+name: 辭典例句影片抽骨架（中正大學）
+
+# 手動執行：Actions → 辭典例句影片抽骨架 → Run workflow
+# 480 句例句影片分幾份同時處理（下載→抽骨架＋表情係數→刪影片）→ 合併到 corpus/sent/ → 照 gloss 詞序自動切出每個詞。
+on:
+  workflow_dispatch:
+    inputs:
+      shards:
+        description: 分幾份同時跑（最多 20）
+        default: '8'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: corpus-ingest
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      shards: ${{ steps.p.outputs.shards }}
+    steps:
+      - id: p
+        run: |
+          n=${{ inputs.shards }}
+          echo "shards=$(python3 -c "import json;print(json.dumps(list(range($n))))")" >> "$GITHUB_OUTPUT"
+
+  extract:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+      - run: pip install -r tools/requirements.txt
+      - name: 模型快取
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/tsl-models
+          key: tsl-models-v1
+      - name: 抽骨架（第 ${{ matrix.shard }} 份）
+        run: python tools/ccu_dict.py sent --shard ${{ matrix.shard }} --of ${{ inputs.shards }} --out out/${{ matrix.shard }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sent-${{ matrix.shard }}
+          path: out/${{ matrix.shard }}
+          retention-days: 3
+
+  merge:
+    needs: extract
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install numpy
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          pattern: sent-*
+      - name: 合併、切出每個詞
+        run: |
+          python tools/ccu_dict.py sent-merge out/*
+          python tools/align_sent.py
+      - name: 存回 repo
+        run: |
+          git config user.name "tsl-corpus-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add corpus/sent
+          git diff --cached --quiet || (git commit -m "語料：辭典例句整句骨架＋自動切詞 [CF-Pages-Skip]" && git pull --rebase && git push)
