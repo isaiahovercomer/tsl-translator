@@ -77,7 +77,7 @@ export async function onRequest({ request, env }) {
 
   // v=1：舊做法（不給候選詞），評估比較用
   const useCand = new URL(request.url).searchParams.get('v') !== '1';
-  const cache = caches.default, key = new Request(new URL('/api/gloss?c=' + encodeURIComponent(text + '|' + hint.join('/') + (loo ? '|loo' : '') + (useCand ? '|v3' : '') + (new URL(request.url).searchParams.get('model') || '')), request.url).toString());
+  const cache = caches.default, key = new Request(new URL('/api/gloss?c=' + encodeURIComponent(text + '|' + hint.join('/') + (loo ? '|loo' : '') + (useCand ? '|v4' : '') + (new URL(request.url).searchParams.get('model') || '')), request.url).toString());
   const hit = loo ? null : await cache.match(key); if (hit) return hit;
 
   if (!EX) EX = await (await env.ASSETS.fetch(new URL('/corpus/dict/gloss-examples.json', request.url))).json();

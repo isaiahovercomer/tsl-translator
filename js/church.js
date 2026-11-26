@@ -39,6 +39,12 @@ export function keepChurch(text, gloss) {
   if (!terms.length) return gloss.slice();
   const g = gloss.slice(), fixed = new Set();
   const free = w => !rest.includes(w);   // 這個詞在原句裡「召會用語以外」的地方沒出現 → 是換來的
+  // ⓪ 一個詞換掉好幾個召會用語（弟兄姊妹 → 兄弟姊妹）：拆回原句的那幾個詞
+  for (let i = 0; i < g.length; i++) {
+    const w = g[i]; if (isChurchTerm(w) || w.length < 3 || text.includes(w)) continue;
+    const inW = terms.map(x => x[0]).filter(t => [...t].every(c => w.includes(c)));
+    if (inW.length >= 2 && sorted(inW.join('')) === sorted(w)) { g.splice(i, 1, ...inW); i += inW.length - 1; }
+  }
   for (const [t, pos] of terms) {
     const have = g.findIndex((w, i) => w === t && !fixed.has(i));
     if (have >= 0) { fixed.add(have); continue; }
@@ -60,7 +66,8 @@ export function keepChurch(text, gloss) {
     const k = g.findIndex((w, i) => !fixed.has(i) && w !== t && !isChurchTerm(w) && free(w) &&
       ((SUB[t] || []).includes(w) || (w.length < t.length && [...w].every(c => t.includes(c)))));
     if (k >= 0) { g[k] = t; fixed.add(k); continue; }
-    // ③ AI 整個漏掉：照原句位置補回去
+    // ③ AI 整個漏掉：照原句位置補回去（已經在別的詞裡，例如原句就說「兄弟姊妹」→ 不補）
+    if (g.some(w => w.includes(t))) continue;
     let at = g.length;
     for (let i = 0; i < g.length; i++) { const p = text.indexOf(g[i]); if (p > pos) { at = i; break; } }
     g.splice(at, 0, t);
