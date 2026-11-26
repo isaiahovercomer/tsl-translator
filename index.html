@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/","@pixiv/three-vrm":"https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.6.0/lib/three-vrm.module.min.js"}}</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 :root{--ink:#2F3343;--paper:#FAF6EE;--gold:#C49356;--brick:#B03A2E;--line:#e4dccb;--muted:#7b7a74;--ok:#2e7d5b;--card:#fff}
@@ -240,6 +240,10 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
       <h2>⚙️ 設定</h2>
       <label>辨識嚴格度（越小越嚴格）：<b id="thVal"></b><input type="range" id="threshold" min="0.4" max="3" step="0.05"></label>
       <div class="row"><label class="grow">手語人像：<select id="avatarKind" style="width:100%">
+        <option value="vrm-f1">插畫風 3D 主播：女・長髮（推薦）</option>
+        <option value="vrm-f2">插畫風 3D 主播：女・短髮</option>
+        <option value="vrm-m1">插畫風 3D 主播：男・短髮</option>
+        <option value="vrm-m2">插畫風 3D 主播：男・背心領帶</option>
         <option value="real-f1">寫實主播：女・長髮（Colab 產生影片）</option>
         <option value="real-f2">寫實主播：女・短髮（Colab 產生影片）</option>
         <option value="real-m1">寫實主播：男・短髮（Colab 產生影片）</option>

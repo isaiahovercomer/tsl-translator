@@ -6,6 +6,16 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { OFF, PI, FI, has } from './core.js';
+import { faceExpr } from './avatar2d.js';
+
+// VRM（VRoid 等插畫風 3D 角色）：humanoid 骨頭名稱 → 這裡用的 Mixamo 名稱
+const VRM_MAP = { hips: 'Hips', spine: 'Spine', chest: 'Spine1', upperChest: 'Spine2', neck: 'Neck', head: 'Head' };
+for (const [s, S] of [['left', 'Left'], ['right', 'Right']]) {
+  Object.assign(VRM_MAP, { [s + 'Shoulder']: S + 'Shoulder', [s + 'UpperArm']: S + 'Arm', [s + 'LowerArm']: S + 'ForeArm', [s + 'Hand']: S + 'Hand' });
+  const F = { Thumb: ['Metacarpal', 'Proximal', 'Distal'], Index: ['Proximal', 'Intermediate', 'Distal'], Middle: ['Proximal', 'Intermediate', 'Distal'],
+    Ring: ['Proximal', 'Intermediate', 'Distal'], Little: ['Proximal', 'Intermediate', 'Distal'] };
+  for (const [fi, segs] of Object.entries(F)) segs.forEach((g, k) => { VRM_MAP[s + fi + g] = S + 'Hand' + (fi === 'Little' ? 'Pinky' : fi) + (k + 1); });
+}
 
 // 3ds Max Biped（Rocketbox）骨頭名稱 → Mixamo 名稱
 const BIP = { Pelvis: 'Hips', Spine: 'Spine', Spine1: 'Spine1', Spine2: 'Spine2', Neck: 'Neck', Head: 'Head' };
@@ -38,13 +48,17 @@ const FINGERS = [
 ];
 // 臉部表情 → 各種角色的 blendshape 名稱（ARKit／Ready Player Me、Eva）
 const SHAPES = {  // 第一個是 ARKit 名稱（Rocketbox、Ready Player Me）
-  jaw: ['jawOpen', 'MouthOpen', 'Jaw_Down'],
-  blinkL: ['eyeBlinkLeft', 'Blink_Left'], blinkR: ['eyeBlinkRight', 'Blink_Right'],
-  browUpL: ['browOuterUpLeft', 'BrowsUp_Left'], browUpR: ['browOuterUpRight', 'BrowsUp_Right'],
+  // Fcl_ 開頭是 VRoid 的臉部形狀（名稱前面還有 Face.M_F00_000_00_ 之類，用結尾比對）
+  jaw: ['jawOpen', 'MouthOpen', 'Jaw_Down', 'Fcl_MTH_A'],
+  blinkL: ['eyeBlinkLeft', 'Blink_Left', 'Fcl_EYE_Close_L'], blinkR: ['eyeBlinkRight', 'Blink_Right', 'Fcl_EYE_Close_R'],
+  browUpL: ['browOuterUpLeft', 'BrowsUp_Left', 'Fcl_BRW_Surprised'], browUpR: ['browOuterUpRight', 'BrowsUp_Right'],
   browIn: ['browInnerUp'],
-  browDownL: ['browDownLeft', 'BrowsDown_Left'], browDownR: ['browDownRight', 'BrowsDown_Right'],
-  smileL: ['mouthSmileLeft', 'Smile_Left'], smileR: ['mouthSmileRight', 'Smile_Right'],
+  browDownL: ['browDownLeft', 'BrowsDown_Left', 'Fcl_BRW_Angry'], browDownR: ['browDownRight', 'BrowsDown_Right'],
+  smileL: ['mouthSmileLeft', 'Smile_Left', 'Fcl_MTH_Fun'], smileR: ['mouthSmileRight', 'Smile_Right'],
+  eyeWide: ['eyeWideLeft', 'Fcl_EYE_Surprised'], eyeWideR: ['eyeWideRight'],
+  sad: ['mouthFrownLeft', 'Fcl_MTH_Sorrow'], sadR: ['mouthFrownRight'],
 };
+const findMorph = (dict, n) => n.startsWith('Fcl_') ? Object.keys(dict).find(k => k === n || k.endsWith('_' + n)) : (n in dict ? n : null);
 
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
 const _m0 = new THREE.Matrix4(), _m1 = new THREE.Matrix4();
@@ -60,8 +74,27 @@ export class Avatar3D {
 
   async load(url) {
     this.url = url;
-    const gltf = await loadGLTF(url);
-    const root = cloneSkinned(gltf.scene);
+    let root, vrm = null;
+    if (/\.vrm(\?|$)/i.test(url)) {
+      // VRM：每個畫面各自載入（VRM 物件綁在場景上，不能共用複製）
+      const { VRMLoaderPlugin, VRMUtils } = await import('@pixiv/three-vrm');
+      const gltf = await new GLTFLoader().register(p => new VRMLoaderPlugin(p, { autoUpdateHumanBones: false })).loadAsync(url);
+      vrm = gltf.userData.vrm; root = vrm.scene;
+      // VRoid 舊版（VRM0）把臉部形狀名稱放在 primitives[].extras.targetNames，three.js 沒讀：自己補上名稱
+      const json = gltf.parser.json;
+      root.traverse(o => {
+        if (!o.isMesh || !o.morphTargetInfluences) return;
+        const as = gltf.parser.associations.get(o); if (!as || as.meshes === undefined) return;
+        const m = json.meshes[as.meshes], prim = m.primitives[as.primitives || 0] || m.primitives[0];
+        const names = (m.extras && m.extras.targetNames) || (prim.extras && prim.extras.targetNames);
+        if (names) o.morphTargetDictionary = Object.fromEntries(names.map((n, i) => [n, i]));
+      });
+      if (VRMUtils.removeUnnecessaryVertices) VRMUtils.removeUnnecessaryVertices(root);
+    } else {
+      const gltf = await loadGLTF(url);
+      root = cloneSkinned(gltf.scene);
+    }
+    this.vrm = vrm;
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -75,9 +108,13 @@ export class Avatar3D {
     // 骨頭：去掉 mixamorig 前綴
     this.b = {};
     root.traverse(o => {
-      if (o.isBone) this.b[canonical(o.name)] = o;
+      if (o.isBone && !vrm) this.b[canonical(o.name)] = o;
       if (o.isMesh) o.frustumCulled = false;
     });
+    if (vrm) {
+      for (const [vn, cn] of Object.entries(VRM_MAP)) { const n = vrm.humanoid.getRawBoneNode(vn); if (n) this.b[cn] = n; }
+      if (!this.b.Spine2) this.b.Spine2 = this.b.Spine1 || this.b.Spine;
+    }
     for (const k of ['Hips', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightArm', 'RightForeArm', 'RightHand'])
       if (!this.b[k]) throw new Error('這個 3D 角色不是 Mixamo 骨架（找不到 ' + k + '）');
     this.bind = new Map();
@@ -102,9 +139,10 @@ export class Avatar3D {
     this.shape = {};
     for (const [k, names] of Object.entries(SHAPES)) {
       this.shape[k] = [];
-      for (const m of this.morphs) for (const n of names) if (n in m.morphTargetDictionary) { this.shape[k].push([m, m.morphTargetDictionary[n]]); break; }
+      for (const m of this.morphs) for (const n of names) { const key = findMorph(m.morphTargetDictionary, n); if (key) { this.shape[k].push([m, m.morphTargetDictionary[key]]); break; } }
     }
-    this.face = { jaw: 0, blinkL: 0, blinkR: 0, browUpL: 0, browUpR: 0, browIn: 0, browDownL: 0, browDownR: 0, smileL: 0, smileR: 0 };
+    this.face = { jaw: 0, blinkL: 0, blinkR: 0, browUpL: 0, browUpR: 0, browIn: 0, browDownL: 0, browDownR: 0, smileL: 0, smileR: 0, eyeWide: 0, eyeWideR: 0, sad: 0, sadR: 0 };
+    this.t = performance.now();
     this.browBase = null;
 
     // 鏡頭：框住腰到頭頂（手語空間）
@@ -141,6 +179,9 @@ export class Avatar3D {
     if (!this.ready) return;
     this.resize();
     this.pose(f);
+    if (this.vrm && this.vrm.springBoneManager) {   // 頭髮、衣服自然擺動
+      const now = performance.now(); this.vrm.springBoneManager.update(Math.min(0.05, (now - this.t) / 1000)); this.t = now;
+    }
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -254,30 +295,24 @@ export class Avatar3D {
     }
   }
 
-  // 臉：嘴巴張開、眨眼、眉毛（以眼睛寬度當尺）
+  // 臉：用 avatar2d.js 校正過的表情參數（眉毛上揚／皺眉、眼睛開合、張嘴、嘴角）
   poseFace(f) {
-    const F = i => OFF.face + i, tgt = {};
-    for (const k in this.face) tgt[k] = 0;
-    if (has(f, F(FI.noseTip))) {
-      const d = (a, c) => Math.hypot(f[F(a) * 3] - f[F(c) * 3], f[F(a) * 3 + 1] - f[F(c) * 3 + 1]);
-      const eyeW = (d(FI.lEye[0], FI.lEye[1]) + d(FI.rEye[0], FI.rEye[1])) / 2 || 1;
-      const clamp = x => Math.max(0, Math.min(1, x));
-      tgt.jaw = clamp((d(FI.mouth[4], FI.mouth[5]) / eyeW - 0.08) / 0.9);
-      tgt.blinkL = clamp(1 - (d(FI.lEye[2], FI.lEye[3]) / eyeW - 0.12) / 0.16);
-      tgt.blinkR = clamp(1 - (d(FI.rEye[2], FI.rEye[3]) / eyeW - 0.12) / 0.16);
-      // 眉毛高度跟自己平常的高度比（慢慢更新的基準）
-      const brow = (br, eye) => { const by = br.reduce((s, i) => s + f[F(i) * 3 + 1], 0) / br.length; const ey = (f[F(eye[0]) * 3 + 1] + f[F(eye[1]) * 3 + 1]) / 2; return (ey - by) / eyeW; };
-      const bl = brow(FI.lBrow, FI.lEye), brr = brow(FI.rBrow, FI.rEye);
-      if (!this.browBase) this.browBase = [bl, brr];
-      this.browBase[0] += (bl - this.browBase[0]) * 0.01; this.browBase[1] += (brr - this.browBase[1]) * 0.01;
-      const ul = (bl - this.browBase[0]) / 0.25, ur = (brr - this.browBase[1]) / 0.25;
-      tgt.browUpL = clamp(ul); tgt.browUpR = clamp(ur); tgt.browIn = clamp((ul + ur) / 2);
-      tgt.browDownL = clamp(-ul); tgt.browDownR = clamp(-ur);
-      const mw = d(FI.mouth[0], FI.mouth[1]) / eyeW;
-      tgt.smileL = tgt.smileR = clamp((mw - 1.75) / 0.6);
+    const tgt = {}; for (const k in this.face) tgt[k] = 0;
+    const e = faceExpr(f);
+    if (e) {
+      const c = x => Math.max(0, Math.min(1, x));
+      tgt.jaw = c(e.mouth * 0.9);
+      tgt.blinkL = c((0.45 - e.eyeL) / 0.35); tgt.blinkR = c((0.45 - e.eyeR) / 0.35);
+      tgt.browUpL = c(e.browL * 0.8); tgt.browUpR = c(e.browR * 0.8); tgt.browIn = c((e.browL + e.browR) * 0.4);
+      tgt.browDownL = tgt.browDownR = c(-(e.browL + e.browR) * 0.35 + e.furrow * 0.7);
+      tgt.smileL = tgt.smileR = c(e.smile * 0.9);
+      tgt.sad = tgt.sadR = c(-e.smile * 0.6);
+      tgt.eyeWide = tgt.eyeWideR = c((e.browL + e.browR) * 0.25 + (Math.min(e.eyeL, e.eyeR) - 1.1) * 1.5);
+    } else {   // 沒有臉部資料：偶爾眨眼
+      const ph = (performance.now() % 4200) / 4200; tgt.blinkL = tgt.blinkR = ph > 0.97 ? 1 : 0;
     }
     for (const k in this.face) {
-      this.face[k] += (tgt[k] - this.face[k]) * 0.4;
+      this.face[k] += (tgt[k] - this.face[k]) * 0.45;
       for (const [m, i] of this.shape[k]) m.morphTargetInfluences[i] = this.face[k];
     }
   }

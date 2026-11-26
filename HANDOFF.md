@@ -1,4 +1,4 @@
-# 交接報告：台灣手語對話翻譯器（2026-11-26 下午，v0.6.0）
+# 交接報告：台灣手語對話翻譯器（2026-11-26 下午，v0.7.0）
 
 ## ★ 使用者目標（2026-11-26 確認）與下一步
 **目標**：每個人用手機打開網頁就能用。手機立著、螢幕和前鏡頭都對著聾人：
@@ -8,7 +8,8 @@
 
 **下一步（新工作階段做）**
 1. **面對面模式**（一個畫面）：主播全螢幕（直式）、右上角小視窗＝前鏡頭畫面（看自己有沒有入鏡）、上方字幕＝聽人說的話、下方字幕＝辨識出的手語中文；一個按鈕同時開麥克風＋前鏡頭；全螢幕、螢幕不休眠（Wake Lock）。手機語音辨識和 TTS 互相干擾：TTS 唸的時候暫停辨識（已有 pausedForTTS）。要實測：Android Chrome、iOS Safari 同時開鏡頭＋語音辨識是否衝突；MediaPipe＋人像同時跑的效能（必要時辨識降到 10～15 fps、人像畫面降解析度）。
-2. **主播外觀改 VRM 插畫風 3D**（three-vrm、卡通著色 MToon，看起來像新竹那種韓漫插畫風；手指、臉部表情 blendshape 齊全，手機可即時跑）。avatar3d.js 目前對應 Mixamo／Biped 骨頭，要加 VRM humanoid 骨頭對應＋VRM 表情（happy、angry、surprised、blink、aa/ih/ou…，配合 avatar2d.js 已校正的臉部參數）。主播來源待使用者決定：VRoid Studio 自己捏（Windows 免費）匯出 .vrm，或先找授權允許使用的免費 VRM。
+2. ✅ **（v0.7.0 已完成第一版）主播外觀改 VRM 插畫風 3D**：預設 `vrm-f1`。四位 VRoid 官方範例（見 `avatars/VRM-CREDITS.md`：Shino、AvatarSample_A/C 、Fumiriya），`tools/vrm_slim.py` 把 12–19 MB 縮到 5–6 MB。avatar3d.js：VRM humanoid → Mixamo 名稱（VRM_MAP）、VRoid 臉部形狀名稱要從 primitives[].extras.targetNames 自己補（three.js 沒讀）、表情改用 avatar2d.js 的 faceExpr 校正值（Fcl_BRW_Surprised／Angry、EYE_Close_L/R、EYE_Surprised、MTH_A／Fun／Sorrow）、頭髮衣服 springBone 擺動；語料預覽格用 2D 省記憶體。importmap 加 @pixiv/three-vrm 3.6.0。已在 headless Chrome 測過女・長髮、男・短髮比「我想知道」「謝謝你」。待改：衣服是學生制服風，之後使用者可用 VRoid Studio 自己捏主播換掉；手機實測效能。
+   （原規劃）**主播外觀改 VRM 插畫風 3D**（three-vrm、卡通著色 MToon，看起來像新竹那種韓漫插畫風；手指、臉部表情 blendshape 齊全，手機可即時跑）。avatar3d.js 目前對應 Mixamo／Biped 骨頭，要加 VRM humanoid 骨頭對應＋VRM 表情（happy、angry、surprised、blink、aa/ih/ou…，配合 avatar2d.js 已校正的臉部參數）。主播來源待使用者決定：VRoid Studio 自己捏（Windows 免費）匯出 .vrm，或先找授權允許使用的免費 VRM。
 3. 寫實影片 Colab（下方 v0.6.0）保留，不是優先。
 
 ## v0.6.0：寫實 2D 主播（新竹 AI 手語風格）— 進行中
@@ -56,7 +57,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.6.0
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.7.0
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。

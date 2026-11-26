@@ -6,18 +6,20 @@ import * as store from './store.js';
 import { toGloss, aiGloss, mapGloss } from './gloss.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.6.0';
+const VERSION = '0.7.0';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms = 2600) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), ms); }
 
 // ---------- 設定 ----------
-const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝', avatarKind: '2d-f1', avatarUrl: '', prefCat: 'church', addCat: 'general', glossMode: 'ai', playMode: 'queue' };
+const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝', avatarKind: 'vrm-f1', avatarUrl: '', prefCat: 'church', addCat: 'general', glossMode: 'ai', playMode: 'queue' };
 let S = { ...DEF };
 try { S = { ...DEF, ...JSON.parse(localStorage.getItem('tsl-settings') || '{}') }; } catch {}
 // v0.5：預設改成 2D 插畫人像（之前選 3D 寫實的，換成同性別的 2D）
 if (!S.v5) { S.avatarKind = { female: '2d-f1', male: '2d-m1' }[S.avatarKind] || S.avatarKind; S.v5 = 1; }
+// v0.7：預設改成插畫風 3D 主播（VRM）
+if (!S.v7) { S.avatarKind = { '2d-f1': 'vrm-f1', '2d-f2': 'vrm-f2', '2d-m1': 'vrm-m1', '2d-m2': 'vrm-m2', female: 'vrm-f1', male: 'vrm-m1' }[S.avatarKind] || S.avatarKind; S.v7 = 1; }
 const saveS = () => { try { localStorage.setItem('tsl-settings', JSON.stringify(S)); } catch {} };
 saveS();
 const STYLE_KINDS = ['2d-f1', '2d-f2', '2d-m1', '2d-m2'];
@@ -69,6 +71,7 @@ const paused = () => realOn ? real.paused : player.paused;
 function stopAll() { if (realOn) real.stop(); else player.stop(); setTimeout(pump, 0); }
 // 3D 人像：寫實女性／男性（微軟 Rocketbox，MIT），或自訂 Mixamo／Biped 骨架 .glb；載入失敗就用 2D
 const AVATAR_URLS = {
+  'vrm-f1': 'avatars/vrm-f1.vrm', 'vrm-f2': 'avatars/vrm-f2.vrm', 'vrm-m1': 'avatars/vrm-m1.vrm', 'vrm-m2': 'avatars/vrm-m2.vrm',
   female: 'avatars/tw-female.glb',
   male: 'avatars/tw-male.glb',
   eva: 'https://resources.gti.upf.edu/3Dcharacters/ReadyEva/ReadyEva.glb',
@@ -83,8 +86,11 @@ async function applyAvatar() {
     toast(n ? `寫實主播：${n} 個詞有影片，其他詞先用插畫人像` : '這位寫實主播還沒有影片（用 Colab 產生），先用插畫人像', 4000);
   } else real.off();
   const url = (S.avatarKind === '2d' || style) ? null : S.avatarKind === 'custom' ? S.avatarUrl.trim() || null : AVATAR_URLS[S.avatarKind] || AVATAR_URLS.female;
-  if (url) $('avatarStatus').textContent = '3D 人像載入中…';
-  try { await Promise.all([player.set3D(url), preview.set3D(url)]); }
+  if (url) $('avatarStatus').textContent = '3D 人像載入中…（第一次約 5 MB，之後會記住）';
+  // VRM 比較大：語料預覽那格用同性別的 2D 人像，省手機記憶體
+  const isVrm = /\.vrm$/i.test(url || '');
+  if (isVrm) preview.style = { 'vrm-f1': 'f1', 'vrm-f2': 'f2', 'vrm-m1': 'm1', 'vrm-m2': 'm2' }[S.avatarKind] || 'f1';
+  try { await Promise.all([player.set3D(url), preview.set3D(isVrm ? null : url)]); }
   catch (e) { console.warn(e); toast('3D 人像載入失敗，先用 2D 人像：' + e.message, 4000); player.set3D(null); preview.set3D(null); }
   $('avatarStatus').textContent = `語料庫：${byWord.size} 個詞、${samples.length} 筆樣本`;
 }
