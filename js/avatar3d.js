@@ -74,6 +74,8 @@ export class Avatar3D {
 
   async load(url) {
     this.url = url;
+    const toon = /#toon$/.test(url); url = url.replace(/#toon$/, '');   // 網址後面加 #toon：改成插畫風（卡通著色＋描邊）
+    this.toon = toon;
     let root, vrm = null;
     if (/\.vrm(\?|$)/i.test(url)) {
       // VRM：每個畫面各自載入（VRM 物件綁在場景上，不能共用複製）
@@ -104,6 +106,19 @@ export class Avatar3D {
     const fill = new THREE.DirectionalLight(0xffe8d0, 0.8); fill.position.set(-1.5, 1, 1); this.scene.add(fill);
     this.scene.add(root);
     this.root = root;
+    if (toon) {
+      // 三階明暗的卡通著色，加上黑色描邊：寫實比例的成人角色看起來像插畫
+      const g = new Uint8Array([90, 170, 255]);
+      const grad = new THREE.DataTexture(g, 3, 1, THREE.RedFormat); grad.minFilter = grad.magFilter = THREE.NearestFilter; grad.needsUpdate = true;
+      root.traverse(o => {
+        if (!o.isMesh) return;
+        const conv = m => { const t = new THREE.MeshToonMaterial({ color: m.color, map: m.map, gradientMap: grad, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side });
+          t.name = m.name; return t; };
+        o.material = Array.isArray(o.material) ? o.material.map(conv) : conv(o.material);
+      });
+      const { OutlineEffect } = await import('three/addons/effects/OutlineEffect.js');
+      this.outline = new OutlineEffect(this.renderer, { defaultThickness: 0.0035, defaultColor: [0.12, 0.1, 0.1] });
+    }
 
     // 骨頭：去掉 mixamorig 前綴
     this.b = {};
@@ -182,7 +197,7 @@ export class Avatar3D {
     if (this.vrm && this.vrm.springBoneManager) {   // 頭髮、衣服自然擺動
       const now = performance.now(); this.vrm.springBoneManager.update(Math.min(0.05, (now - this.t) / 1000)); this.t = now;
     }
-    this.renderer.render(this.scene, this.camera);
+    (this.outline || this.renderer).render(this.scene, this.camera);
   }
 
   // ---------- 套骨架 ----------

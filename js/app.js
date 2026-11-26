@@ -72,6 +72,7 @@ function stopAll() { if (realOn) real.stop(); else player.stop(); setTimeout(pum
 // 3D 人像：寫實女性／男性（微軟 Rocketbox，MIT），或自訂 Mixamo／Biped 骨架 .glb；載入失敗就用 2D
 const AVATAR_URLS = {
   'vrm-f1': 'avatars/vrm-f1.vrm', 'vrm-f2': 'avatars/vrm-f2.vrm', 'vrm-m1': 'avatars/vrm-m1.vrm', 'vrm-m2': 'avatars/vrm-m2.vrm',
+  'toon-f': 'avatars/tw-female.glb#toon', 'toon-m': 'avatars/tw-male.glb#toon',
   female: 'avatars/tw-female.glb',
   male: 'avatars/tw-male.glb',
   eva: 'https://resources.gti.upf.edu/3Dcharacters/ReadyEva/ReadyEva.glb',
