@@ -1,0 +1,80 @@
+name: 語料匯入（影片→骨架）
+
+on:
+  issues:
+    types: [opened, labeled]
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 影片網址（YouTube 等）
+        required: true
+      segments:
+        description: 分段標註，用分號隔開，例如 0:12-0:14 謝謝; 0:20-0:23 你好
+        required: false
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: corpus-ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    # 只處理 [匯入]/[語料] 開頭的 issue；非管理員送的要等管理員加上 approved 標籤
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      ((startsWith(github.event.issue.title, '[匯入]') || startsWith(github.event.issue.title, '[語料]')) &&
+       ((github.event.action == 'opened' && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)) ||
+        (github.event.action == 'labeled' && github.event.label.name == 'approved')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+      - name: 安裝
+        run: pip install -r tools/requirements.txt
+      - uses: denoland/setup-deno@v2   # yt-dlp 解析 YouTube 需要 JS 執行環境
+      - name: 模型快取
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/tsl-models
+          key: tsl-models-v1
+      - name: 分析影片（影片處理完即刪除，只留骨架）
+        id: run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          YT_COOKIES: ${{ secrets.YT_COOKIES }}
+          TSL_RESULT: ${{ runner.temp }}/result.txt
+          URL: ${{ inputs.url }}
+          SEGS: ${{ inputs.segments }}
+        run: |
+          set +e
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            args=()
+            IFS=';' read -ra parts <<< "$SEGS"
+            for p in "${parts[@]}"; do p="$(echo "$p" | xargs)"; [ -n "$p" ] && args+=(--seg "$p"); done
+            python tools/ingest.py url "$URL" "${args[@]}"
+          else
+            python tools/ingest.py issue
+          fi
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+      - name: 存回 repo
+        run: |
+          git config user.name "tsl-corpus-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add corpus
+          git diff --cached --quiet || (git commit -m "語料：${{ github.event.issue.title || inputs.url }}" && git pull --rebase && git push)
+      - name: 回覆 issue
+        if: github.event_name == 'issues' && always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          msg="$(cat '${{ runner.temp }}/result.txt' 2>/dev/null || echo '處理失敗，請看 Actions 紀錄')"
+          gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "$msg"
+          if [ "${{ steps.run.outputs.status }}" = "0" ]; then gh issue close ${{ github.event.issue.number }} --repo ${{ github.repository }}; fi

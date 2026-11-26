@@ -1,0 +1,231 @@
+// avatar.js — 用骨架資料畫出打手語的人像，並把多個詞接起來播放
+import { OFF, PI, FI, P, FPS, has, newFrame, bodyRef } from './core.js';
+
+// 標準身形（畫布正規化座標）：肩膀中點、肩寬
+const STD = { cx: 0.5, cy: 0.46, w: 0.3 };
+
+// 把一段樣本換到標準身形（用整段平均肩膀定位，不同人的語料就能接在一起）
+export function normalizeSeq(frames) {
+  const refs = frames.map(bodyRef).filter(Boolean);
+  if (!refs.length) return frames;
+  const r = { cx: mean(refs.map(x => x.cx)), cy: mean(refs.map(x => x.cy)), w: mean(refs.map(x => x.w)) };
+  const k = STD.w / r.w;
+  return frames.map(f => {
+    const g = new Float32Array(f.length);
+    for (let i = 0; i < P; i++) {
+      g[i * 3] = (f[i * 3] - r.cx) * k + STD.cx;
+      g[i * 3 + 1] = (f[i * 3 + 1] - r.cy) * k + STD.cy;
+      g[i * 3 + 2] = f[i * 3 + 2] * k;
+    }
+    return fillMissing(g);
+  });
+}
+const mean = a => a.reduce((s, x) => s + x, 0) / a.length;
+
+// ---- 休息姿勢 ----
+// 手的形狀（相對手腕，手指朝 +y 方向，單位 = 手長）
+const HAND_SHAPE = (() => {
+  const base = [[0, 0]];
+  const fingers = [[-0.35, [[-.2, .25], [-.3, .45], [-.38, .62], [-.43, .76]]],
+    [-0.15, [[-.12, .55], [-.14, .78], [-.15, .92], [-.16, 1.03]]],
+    [0, [[0, .57], [0, .82], [0, .97], [0, 1.1]]],
+    [0.12, [[.12, .55], [.14, .77], [.15, .9], [.16, 1.0]]],
+    [0.24, [[.23, .5], [.27, .67], [.29, .78], [.31, .87]]]];
+  fingers.forEach(([, pts]) => pts.forEach(p => base.push(p)));
+  return base; // 21 點
+})();
+function placeHand(f, off, wx, wy, dirx, diry, len, mirror) {
+  const nx = -diry, ny = dirx;
+  HAND_SHAPE.forEach(([a, b], j) => {
+    const s = mirror ? -a : a;
+    f[(off + j) * 3] = wx + (dirx * b + nx * s) * len;
+    f[(off + j) * 3 + 1] = wy + (diry * b + ny * s) * len;
+    f[(off + j) * 3 + 2] = 0;
+  });
+}
+export function restFrame() {
+  const f = newFrame(); const { cx, cy, w } = STD; const h = w / 2;
+  const set = (i, x, y) => { f[(OFF.pose + i) * 3] = x; f[(OFF.pose + i) * 3 + 1] = y; f[(OFF.pose + i) * 3 + 2] = 0; };
+  set(PI.nose, cx, cy - 0.62 * w); set(PI.lEye, cx + 0.1 * w, cy - 0.7 * w); set(PI.rEye, cx - 0.1 * w, cy - 0.7 * w);
+  set(PI.lEar, cx + 0.22 * w, cy - 0.66 * w); set(PI.rEar, cx - 0.22 * w, cy - 0.66 * w);
+  set(PI.mouthL, cx + 0.07 * w, cy - 0.5 * w); set(PI.mouthR, cx - 0.07 * w, cy - 0.5 * w);
+  set(PI.lSh, cx + h, cy); set(PI.rSh, cx - h, cy);
+  set(PI.lEl, cx + h + 0.08 * w, cy + 0.75 * w); set(PI.rEl, cx - h - 0.08 * w, cy + 0.75 * w);
+  set(PI.lWr, cx + h * 0.55, cy + 1.3 * w); set(PI.rWr, cx - h * 0.55, cy + 1.3 * w);
+  set(PI.lHip, cx + 0.36 * w, cy + 1.55 * w); set(PI.rHip, cx - 0.36 * w, cy + 1.55 * w);
+  placeHand(f, OFF.lh, cx + h * 0.55, cy + 1.3 * w, -0.3, 0.95, 0.3 * w, true);
+  placeHand(f, OFF.rh, cx - h * 0.55, cy + 1.3 * w, 0.3, 0.95, 0.3 * w, false);
+  return f;
+}
+const REST = restFrame();
+
+// 沒偵測到的手：放在手腕，指向手肘→手腕的延長方向；沒偵測到的臉：不畫細節
+export function fillMissing(f) {
+  for (const [off, wr, el, mir] of [[OFF.lh, PI.lWr, PI.lEl, true], [OFF.rh, PI.rWr, PI.rEl, false]]) {
+    if (has(f, off)) continue;
+    const W = OFF.pose + wr, E = OFF.pose + el;
+    if (!has(f, W)) { for (let j = 0; j < 21; j++) for (let c = 0; c < 3; c++) f[(off + j) * 3 + c] = REST[(off + j) * 3 + c]; continue; }
+    const wx = f[W * 3], wy = f[W * 3 + 1];
+    let dx = 0, dy = 1;
+    if (has(f, E)) { dx = wx - f[E * 3]; dy = wy - f[E * 3 + 1]; const n = Math.hypot(dx, dy) || 1; dx /= n; dy /= n; }
+    placeHand(f, off, wx, wy, dx, dy, STD.w * 0.3, mir);
+  }
+  return f;
+}
+
+export function lerpFrame(a, b, t) {
+  const g = new Float32Array(a.length);
+  for (let k = 0; k < a.length; k++) {
+    const x = a[k], y = b[k];
+    g[k] = Number.isNaN(x) ? y : Number.isNaN(y) ? x : x + (y - x) * t;
+  }
+  return g;
+}
+
+// ---- 繪圖 ----
+const HAND_BONES = [[0, 1, 2, 3, 4], [0, 5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16], [0, 17, 18, 19, 20], [5, 9, 13, 17]];
+export function drawAvatar(ctx, f, opt = {}) {
+  const W = ctx.canvas.width, H = ctx.canvas.height;
+  const S = Math.min(W, H * 0.9);                 // 正規化座標 → 畫素
+  const ox = (W - S) / 2, oy = (H - S) / 2 + S * 0.02;
+  const X = i => ox + f[i * 3] * S, Y = i => oy + f[i * 3 + 1] * S;
+  const p = i => OFF.pose + i;
+  const skin = opt.skin || '#F2C9A5', shirt = opt.shirt || '#2F3343', line = '#3a2a22';
+  ctx.clearRect(0, 0, W, H);
+  if (opt.bg) { ctx.fillStyle = opt.bg; ctx.fillRect(0, 0, W, H); }
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const sw = Math.hypot(X(p(PI.lSh)) - X(p(PI.rSh)), Y(p(PI.lSh)) - Y(p(PI.rSh)));
+
+  // 軀幹
+  const hipY = Math.max(Y(p(PI.lHip)), Y(p(PI.rSh)) + sw * 1.6);
+  ctx.fillStyle = shirt; ctx.beginPath();
+  ctx.moveTo(X(p(PI.rSh)) - sw * 0.08, Y(p(PI.rSh)));
+  ctx.quadraticCurveTo((X(p(PI.rSh)) + X(p(PI.lSh))) / 2, Y(p(PI.rSh)) - sw * 0.12, X(p(PI.lSh)) + sw * 0.08, Y(p(PI.lSh)));
+  ctx.lineTo(X(p(PI.lSh)) + sw * 0.02, H + 10); ctx.lineTo(X(p(PI.rSh)) - sw * 0.02, H + 10); ctx.closePath(); ctx.fill();
+  // 脖子與頭
+  const hx = (X(p(PI.lEar)) + X(p(PI.rEar))) / 2 || X(p(PI.nose)), hy = Y(p(PI.nose)) - sw * 0.06;
+  const headR = Math.max(sw * 0.3, Math.hypot(X(p(PI.lEar)) - X(p(PI.rEar)), Y(p(PI.lEar)) - Y(p(PI.rEar))) * 0.62);
+  ctx.strokeStyle = skin; ctx.lineWidth = sw * 0.22;
+  line2(ctx, hx, hy + headR * 0.6, (X(p(PI.lSh)) + X(p(PI.rSh))) / 2, (Y(p(PI.lSh)) + Y(p(PI.rSh))) / 2 - sw * 0.05);
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.ellipse(hx, hy, headR * 0.86, headR * 1.05, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2b211c'; ctx.beginPath(); ctx.ellipse(hx, hy - headR * 0.45, headR * 0.9, headR * 0.62, 0, Math.PI, Math.PI * 2); ctx.fill();
+  drawFace(ctx, f, X, Y, hx, hy, headR, sw, line);
+
+  // 手臂（後面那隻先畫：z 比較大的）
+  const arms = [[PI.lSh, PI.lEl, PI.lWr, OFF.lh], [PI.rSh, PI.rEl, PI.rWr, OFF.rh]]
+    .sort((a, b) => (f[(b[3]) * 3 + 2] || 0) - (f[(a[3]) * 3 + 2] || 0));
+  for (const [s, e, w, h] of arms) {
+    const hx0 = has(f, h) ? X(h) : X(p(w)), hy0 = has(f, h) ? Y(h) : Y(p(w));
+    ctx.strokeStyle = shirt; ctx.lineWidth = sw * 0.2;
+    ctx.beginPath(); ctx.moveTo(X(p(s)), Y(p(s))); ctx.lineTo(X(p(e)), Y(p(e))); ctx.stroke();
+    ctx.strokeStyle = '#3d4256'; ctx.lineWidth = sw * 0.17;
+    ctx.beginPath(); ctx.moveTo(X(p(e)), Y(p(e))); ctx.lineTo(hx0, hy0); ctx.stroke();
+    drawHand(ctx, f, h, X, Y, sw, skin, line);
+  }
+  if (opt.caption) {
+    ctx.font = `bold ${Math.round(S * 0.07)}px system-ui, "Noto Sans TC", sans-serif`;
+    ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(47,51,67,.85)';
+    const tw = ctx.measureText(opt.caption).width + S * 0.06;
+    ctx.fillRect(W / 2 - tw / 2, H - S * 0.11, tw, S * 0.09);
+    ctx.fillStyle = '#fff'; ctx.fillText(opt.caption, W / 2, H - S * 0.04);
+  }
+}
+function line2(ctx, a, b, c, d) { ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke(); }
+function drawHand(ctx, f, off, X, Y, sw, skin, line) {
+  ctx.fillStyle = skin; ctx.beginPath();
+  [0, 1, 5, 9, 13, 17].forEach((j, k) => k ? ctx.lineTo(X(off + j), Y(off + j)) : ctx.moveTo(X(off + j), Y(off + j)));
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = skin; ctx.lineWidth = sw * 0.055;
+  for (const chain of HAND_BONES) {
+    ctx.beginPath(); chain.forEach((j, k) => k ? ctx.lineTo(X(off + j), Y(off + j)) : ctx.moveTo(X(off + j), Y(off + j))); ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(58,42,34,.35)'; ctx.lineWidth = Math.max(1, sw * 0.008);
+  for (const chain of HAND_BONES.slice(0, 5)) {
+    ctx.beginPath(); chain.forEach((j, k) => k ? ctx.lineTo(X(off + j), Y(off + j)) : ctx.moveTo(X(off + j), Y(off + j))); ctx.stroke();
+  }
+}
+function drawFace(ctx, f, X, Y, hx, hy, r, sw, line) {
+  const F = i => OFF.face + i;
+  ctx.strokeStyle = line; ctx.fillStyle = line; ctx.lineWidth = Math.max(1.5, sw * 0.022);
+  if (has(f, F(FI.noseTip))) {
+    // 用真實臉部點：先把臉部點移到頭像中心（偵測的臉可能跟身體估計略有偏差）
+    const fx = X(F(FI.noseTip)), fy = Y(F(FI.noseTip));
+    const dx = hx - fx, dy = hy + r * 0.12 - fy;
+    const q = i => [X(F(i)) + dx, Y(F(i)) + dy];
+    for (const brow of [FI.lBrow, FI.rBrow]) { ctx.beginPath(); brow.forEach((i, k) => { const [x, y] = q(i); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); }
+    for (const eye of [FI.lEye, FI.rEye]) {
+      const [ax, ay] = q(eye[0]), [bx, by] = q(eye[1]), [tx, ty] = q(eye[2]), [ux, uy] = q(eye[3]);
+      const open = Math.max(0.8, Math.abs(uy - ty) / 2);
+      ctx.beginPath(); ctx.ellipse((ax + bx) / 2, (ay + by) / 2, Math.max(2, Math.abs(bx - ax) / 3), open, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    const [mlx, mly] = q(FI.mouth[0]), [mrx, mry] = q(FI.mouth[1]), [itx, ity] = q(FI.mouth[4]), [ibx, iby] = q(FI.mouth[5]);
+    const open = Math.abs(iby - ity);
+    ctx.fillStyle = '#8a3b33'; ctx.beginPath();
+    ctx.moveTo(mlx, mly); ctx.quadraticCurveTo((mlx + mrx) / 2, ity - open * 0.3, mrx, mry);
+    ctx.quadraticCurveTo((mlx + mrx) / 2, iby + open * 0.3 + 1, mlx, mly); ctx.fill(); ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.arc(hx - r * 0.3, hy, r * 0.07, 0, Math.PI * 2); ctx.arc(hx + r * 0.3, hy, r * 0.07, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(hx - r * 0.45, hy - r * 0.22); ctx.lineTo(hx - r * 0.15, hy - r * 0.25);
+    ctx.moveTo(hx + r * 0.15, hy - r * 0.25); ctx.lineTo(hx + r * 0.45, hy - r * 0.22); ctx.stroke();
+    ctx.beginPath(); ctx.arc(hx, hy + r * 0.35, r * 0.2, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+  }
+}
+
+// ---- 播放器：把一串詞接起來，詞跟詞之間平滑過渡 ----
+export class AvatarPlayer {
+  constructor(canvas, opt = {}) {
+    this.c = canvas; this.ctx = canvas.getContext('2d'); this.opt = opt;
+    this.timeline = []; this.t0 = 0; this.cur = REST; this.idleSince = 0; this.onWord = opt.onWord || (() => {});
+    this.speed = 1; this.lastWord = null;
+    const loop = (ts) => { this.tick(ts); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  }
+  resize() {
+    const r = this.c.getBoundingClientRect(), d = Math.min(2, window.devicePixelRatio || 1);
+    this.c.width = Math.round(r.width * d); this.c.height = Math.round(r.height * d);
+  }
+  // items: [{word, frames}]，frames 是原始影格
+  play(items, append = true) {
+    const now = performance.now();
+    let start = this.cur;
+    if (!append || !this.timeline.length) { this.timeline = []; this.t0 = now; }
+    else start = this.timeline[this.timeline.length - 1].f;
+    const push = (f, word) => this.timeline.push({ f, word });
+    for (const it of items) {
+      const fr = normalizeSeq(it.frames);
+      const trimmed = trimRest(fr);
+      for (let i = 1; i <= 5; i++) push(lerpFrame(start, trimmed[0], ease(i / 6)), it.word);
+      trimmed.forEach(f => push(f, it.word));
+      start = trimmed[trimmed.length - 1];
+    }
+    for (let i = 1; i <= 8; i++) push(lerpFrame(start, REST, ease(i / 9)), null);
+  }
+  stop() { this.timeline = []; }
+  tick(ts) {
+    if (this.c.width !== Math.round(this.c.getBoundingClientRect().width * Math.min(2, window.devicePixelRatio || 1))) this.resize();
+    let f = this.cur, word = null;
+    if (this.timeline.length) {
+      const x = (ts - this.t0) / 1000 * FPS * this.speed;
+      const i = Math.floor(x);
+      if (i >= this.timeline.length - 1) { f = this.timeline[this.timeline.length - 1].f; this.timeline = []; }
+      else { f = lerpFrame(this.timeline[i].f, this.timeline[i + 1].f, x - i); word = this.timeline[i].word; }
+    } else {
+      // 待機時輕微呼吸
+      const b = Math.sin(ts / 900) * 0.002;
+      f = new Float32Array(REST); for (let k = 1; k < f.length; k += 3) f[k] += b;
+    }
+    this.cur = f;
+    if (word !== this.lastWord) { this.lastWord = word; this.onWord(word); }
+    drawAvatar(this.ctx, f, { ...this.opt, caption: word || this.opt.idleCaption || '' });
+  }
+}
+const ease = t => t * t * (3 - 2 * t);
+// 去掉樣本頭尾手放下的影格，讓詞跟詞接得緊
+function trimRest(fr) {
+  const lim = STD.cy + 1.1 * STD.w;
+  const up = f => [OFF.pose + PI.lWr, OFF.pose + PI.rWr].some(i => has(f, i) && f[i * 3 + 1] < lim);
+  let a = 0, b = fr.length - 1;
+  while (a < b && !up(fr[a])) a++;
+  while (b > a && !up(fr[b])) b--;
+  return b - a >= 3 ? fr.slice(Math.max(0, a - 1), b + 2) : fr;
+}

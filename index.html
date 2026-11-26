@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>台灣手語對話翻譯器</title>
+<meta name="theme-color" content="#2F3343">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+:root{--ink:#2F3343;--paper:#FAF6EE;--gold:#C49356;--brick:#B03A2E;--line:#e4dccb;--muted:#7b7a74;--ok:#2e7d5b;--card:#fff}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--ink);color:#fff;padding:calc(env(safe-area-inset-top) + 8px) 12px 0}
+header h1{margin:0 0 6px;font-size:18px;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
+header h1 img{width:26px;height:26px}
+nav{display:flex;gap:4px;overflow-x:auto}
+nav a{color:#cfd2dc;text-decoration:none;padding:8px 12px;border-radius:10px 10px 0 0;white-space:nowrap;font-size:15px}
+nav a.on{background:var(--paper);color:var(--ink);font-weight:600}
+main{padding:12px 12px calc(env(safe-area-inset-bottom) + 24px);max-width:1200px;margin:0 auto}
+section.view{display:none}section.view.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px}
+.card h2{font-size:16px;margin:0 0 8px;display:flex;align-items:center;gap:6px}
+.talk{display:grid;gap:12px;grid-template-columns:1fr}
+@media (min-width:860px) and (orientation:landscape){.talk{grid-template-columns:1fr 1fr}}
+.stage{position:relative;background:#efe8da;border-radius:12px;overflow:hidden;aspect-ratio:4/3}
+.stage canvas,.stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.stage video.mirror,.stage canvas.mirror{transform:scaleX(-1)}
+.stage .hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);text-align:center;padding:20px}
+.flip .stage{transform:rotate(180deg)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+button,.btn{font:inherit;border:1px solid var(--ink);background:#fff;color:var(--ink);padding:9px 14px;border-radius:999px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+button.primary,.btn.primary{background:var(--ink);color:#fff}
+button.rec{background:var(--brick);border-color:var(--brick);color:#fff}
+button:disabled{opacity:.45;cursor:default}
+input[type=text],input[type=url],input[type=search],textarea,select{font:inherit;border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:#fff;color:var(--ink);min-width:0}
+textarea{width:100%;min-height:80px}
+.grow{flex:1}
+.caption{min-height:2.6em;margin-top:8px;font-size:18px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;min-height:34px}
+.chip{border-radius:999px;padding:4px 11px;background:#eee8dc;font-size:15px}
+.chip.known{background:var(--gold);color:#fff}
+.chip.cur{outline:3px solid var(--brick)}
+.chip.unk{background:#f4d6d2;color:var(--brick);cursor:pointer}
+.chip small{opacity:.75;margin-left:4px}
+.sentence{font-size:22px;font-weight:600;min-height:1.6em;margin-top:6px}
+.muted{color:var(--muted);font-size:14px}
+.status{font-size:13px;color:var(--muted);margin-top:6px}
+.wordlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-top:10px}
+.word{border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff;cursor:pointer;text-align:left}
+.word b{display:block;font-size:17px}
+.word.sel{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold)}
+.samples{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.samples div{display:flex;gap:8px;align-items:center;font-size:14px;border-bottom:1px dashed var(--line);padding-bottom:6px}
+.tag{font-size:12px;padding:1px 7px;border-radius:6px;background:#e9eef7}
+.tag.local{background:#f6ead6}
+.grid2{display:grid;gap:12px;grid-template-columns:1fr}
+@media (min-width:860px){.grid2{grid-template-columns:1fr 1fr}}
+.editor .stage{aspect-ratio:1/1;max-width:420px}
+input[type=range]{width:100%}
+.segs{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.segs .seg{display:flex;gap:6px;align-items:center;flex-wrap:wrap;border:1px solid var(--line);border-radius:10px;padding:6px 8px;background:#fff}
+.seg input[type=text]{width:9em}
+progress{width:100%;height:10px}
+.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 20px);transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:999px;font-size:15px;opacity:0;transition:.3s;pointer-events:none;z-index:20;max-width:92vw}
+.toast.on{opacity:1}
+.count{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:90px;font-weight:800;color:#fff;text-shadow:0 2px 12px #000}
+label.inline{display:flex;align-items:center;gap:6px}
+details summary{cursor:pointer;font-weight:600}
+code{background:#eee8dc;padding:1px 5px;border-radius:5px}
+</style>
+</head>
+<body>
+<header>
+  <h1><img src="icons/icon.svg" alt="">台灣手語對話翻譯器</h1>
+  <nav>
+    <a href="#talk" data-v="talk">對話</a>
+    <a href="#corpus" data-v="corpus">語料庫</a>
+    <a href="#add" data-v="add">新增語料</a>
+    <a href="#settings" data-v="settings">設定與說明</a>
+  </nav>
+</header>
+<main>
+
+<!-- 對話 -->
+<section class="view" id="v-talk">
+  <div class="talk">
+    <div class="card" id="pAvatar">
+      <h2>🗣️ 聽人說話 → 手語人像</h2>
+      <div class="stage"><canvas id="avatar"></canvas></div>
+      <div class="caption" id="speechText"><span class="muted">按「開始聆聽」，說話就會即時轉成手語</span></div>
+      <div class="chips" id="speechChips"></div>
+      <div class="row">
+        <button class="primary" id="btnListen">🎤 開始聆聽</button>
+        <button id="btnFlip" title="把人像轉 180 度，給坐對面的人看">🔄 轉向對面</button>
+      </div>
+      <div class="row">
+        <input type="text" id="typeText" class="grow" placeholder="也可以打字測試，例如：你好 謝謝">
+        <button id="btnType">▶ 比給我看</button>
+      </div>
+      <div class="status" id="avatarStatus"></div>
+    </div>
+    <div class="card">
+      <h2>🤟 手語 → 台灣中文語音</h2>
+      <div class="stage"><video id="camVideo" class="mirror" playsinline muted></video><canvas id="camOverlay" class="mirror"></canvas>
+        <div class="hint" id="camHint">按「開啟鏡頭」，對著鏡頭比手語</div></div>
+      <div class="chips" id="signChips"></div>
+      <div class="sentence" id="signSentence"></div>
+      <div class="row">
+        <button class="primary" id="btnCam">📷 開啟鏡頭</button>
+        <button id="btnSpeak">🔊 唸出來</button>
+        <button id="btnClear">清除</button>
+        <label class="inline muted"><input type="checkbox" id="autoSpeak" checked>停下來就自動唸</label>
+      </div>
+      <div class="status" id="camStatus"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 語料庫 -->
+<section class="view" id="v-corpus">
+  <div class="card">
+    <h2>📚 語料庫</h2>
+    <div class="muted" id="corpusStats">載入中…</div>
+    <div class="row">
+      <input type="search" id="corpusSearch" class="grow" placeholder="搜尋詞彙">
+    </div>
+    <div class="wordlist" id="wordList"></div>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h2 id="wordTitle">選一個詞預覽</h2>
+      <div class="stage" style="aspect-ratio:1/1;max-width:420px"><canvas id="previewCanvas"></canvas></div>
+      <div class="samples" id="sampleList"></div>
+    </div>
+    <div class="card">
+      <h2>📦 匯出、匯入、分享</h2>
+      <p class="muted">「本機」語料只存在這台裝置。要讓大家都能用，請「上傳到共用語料庫」：會下載一個語料檔，並開啟 GitHub 頁面，把檔案拖進去送出，系統會自動加進共用語料庫。</p>
+      <div class="row">
+        <button id="btnExport">⬇ 匯出本機語料</button>
+        <label class="btn">⬆ 匯入語料檔<input type="file" id="importFile" accept=".json,application/json" hidden></label>
+        <button class="primary" id="btnShare">☁ 上傳到共用語料庫</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 新增語料 -->
+<section class="view" id="v-add">
+  <div class="grid2">
+    <div class="card">
+      <h2>📷 用鏡頭錄一個詞</h2>
+      <div class="row"><input type="text" id="recWord" class="grow" placeholder="這個手語的中文意思，例如：謝謝"></div>
+      <div class="stage" style="margin-top:8px"><video id="recVideo" class="mirror" playsinline muted></video><canvas id="recOverlay" class="mirror"></canvas>
+        <div class="count" id="recCount"></div><div class="hint" id="recHint">按「開始錄」，倒數 3 秒後比一次；手放下會自動停止</div></div>
+      <div class="row">
+        <button class="rec" id="btnRec">● 開始錄</button>
+        <button id="btnRecStop" disabled>■ 停止</button>
+      </div>
+      <p class="muted">每個詞建議錄 5 次以上、請不同的人錄，辨識會更準。只存骨架點，不存影像。</p>
+    </div>
+    <div class="card">
+      <h2>🎞️ 上傳影片檔</h2>
+      <p class="muted">手機或電腦裡的手語影片都可以。在這台裝置上分析成骨架資料，影片不會上傳、也不會保存。</p>
+      <label class="btn primary">選擇影片<input type="file" id="videoFile" accept="video/*" hidden></label>
+      <progress id="extractProg" value="0" max="1" hidden></progress>
+      <div class="status" id="extractStatus"></div>
+      <h2 style="margin-top:16px">🔗 網址匯入（YouTube）</h2>
+      <div class="row"><input type="url" id="importUrl" class="grow" placeholder="https://www.youtube.com/watch?v=…"></div>
+      <p class="muted"><b>方法一：邊播邊擷取</b>（電腦版 Chrome／Edge）。① 開啟影片 → ② 開始擷取，選那個影片分頁 → 回去按播放 → 播完按「停止擷取」。在你的電腦上即時轉成骨架，不下載影片。</p>
+      <div class="row"><button id="btnOpenUrl">① 開啟影片</button><button class="primary" id="btnCapture">② 開始擷取</button><button id="btnCapStop" disabled>■ 停止擷取</button></div>
+      <div class="stage" id="capStage" hidden style="margin-top:8px"><video id="capVideo" playsinline muted></video><canvas id="capOverlay"></canvas></div>
+      <div class="status" id="capStatus"></div>
+      <details style="margin-top:10px"><summary>方法二：送到雲端分析</summary>
+        <textarea id="importSegs" placeholder="（選填）分段標註，一行一個：&#10;0:12-0:14 謝謝&#10;0:20-0:23 你好&#10;不填也可以，之後在下面「待標註影片」再切段"></textarea>
+        <div class="row"><button id="btnUrl">送出到雲端</button></div>
+        <p class="muted">會開啟 GitHub 頁面，按「Submit」送出；雲端下載影片、抽出骨架、刪掉影片。注意：YouTube 常擋雲端主機，需要管理員先在 repo 設定 YouTube 登入資料（YT_COOKIES）。</p>
+      </details>
+      <h2 style="margin-top:16px">🗂️ 待標註影片</h2>
+      <div class="samples" id="rawList"><span class="muted">還沒有</span></div>
+    </div>
+  </div>
+  <div class="card editor" id="editor" hidden>
+    <h2 id="edTitle">切段與標註</h2>
+    <div class="grid2">
+      <div>
+        <div class="stage"><canvas id="edCanvas"></canvas></div>
+        <input type="range" id="edPos" min="0" value="0">
+        <div class="row muted"><span id="edTime">0.0 秒</span></div>
+      </div>
+      <div>
+        <div class="row">
+          <button id="edIn">⇤ 設為起點</button><button id="edOut">設為終點 ⇥</button>
+          <button id="edPlay">▶ 播放這段</button>
+        </div>
+        <div class="row muted">選取：<span id="edRange">—</span></div>
+        <div class="row"><input type="text" id="edWord" class="grow" placeholder="這段手語的中文意思"><button class="primary" id="edAdd">＋ 加入語料</button></div>
+        <div class="row"><button id="edAuto">✂ 自動切段</button><button id="edClose">關閉</button></div>
+        <div class="segs" id="edSegs"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 設定與說明 -->
+<section class="view" id="v-settings">
+  <div class="grid2">
+    <div class="card">
+      <h2>⚙️ 設定</h2>
+      <label>辨識嚴格度（越小越嚴格）：<b id="thVal"></b><input type="range" id="threshold" min="0.4" max="3" step="0.05"></label>
+      <label>手語人像速度：<b id="spVal"></b><input type="range" id="avatarSpeed" min="0.5" max="1.6" step="0.05"></label>
+      <div class="row"><label class="grow">中文語音：<select id="voice" style="width:100%"></select></label></div>
+      <label>語速：<b id="rtVal"></b><input type="range" id="rate" min="0.6" max="1.5" step="0.05"></label>
+      <h2 style="margin-top:14px">同義說法</h2>
+      <p class="muted">口語說法對應到語料庫的手語詞，一行一個，例如 <code>您好=你好</code>、<code>多謝=謝謝</code>。</p>
+      <textarea id="aliases"></textarea>
+      <div class="row"><button class="primary" id="saveSettings">儲存設定</button></div>
+    </div>
+    <div class="card">
+      <h2>📖 使用說明</h2>
+      <ol>
+        <li><b>先建語料</b>：到「新增語料」錄詞、上傳影片或貼 YouTube 網址。語料庫裡有的詞，才比得出來、認得出來。</li>
+        <li><b>聽人 → 聾人</b>：「對話」左邊按 🎤，正常說話；人像會即時比出認得的詞，其他字以文字顯示。</li>
+        <li><b>聾人 → 聽人</b>：右邊按 📷，對著鏡頭比；每比完一個詞（手放下或停住）就辨識，停下來後用台灣口音中文唸出整句。</li>
+        <li>認錯的詞（紅色）可以點一下改成正確的詞。</li>
+      </ol>
+      <p class="muted">以<b>台灣手語（自然手語）</b>為主。手語的詞序和中文不同，目前是逐詞翻譯，之後會加入 AI 調整句子。</p>
+      <p class="muted">隱私：所有影片只在裝置上（或雲端分析時暫存）轉成骨架點，原始影像不保存。</p>
+      <p class="muted">建議用 Chrome（Android／電腦）。iPhone 請用 Safari，並「加入主畫面」。</p>
+      <p class="muted" id="verInfo"></p>
+    </div>
+  </div>
+</section>
+</main>
+<div class="toast" id="toast"></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
