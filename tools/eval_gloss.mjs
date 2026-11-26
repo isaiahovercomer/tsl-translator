@@ -46,15 +46,18 @@ const ai = process.argv.indexOf('--ai');
 if (ai > 0) {
   const N = +process.argv[ai + 1] || 40, base = process.env.GLOSS_URL || 'https://tslinterpreter.pages.dev/api/gloss';
   const pick = ex.filter((_, i) => i % 9 === 0).slice(0, N);
-  let C = [0, 0], R = [0, 0], last = 0, n = 0;
+  let C = [0, 0], R = [0, 0], last = 0, n = 0, wa = [0, 0], wr = [0, 0];
+  const model = process.env.GLOSS_MODEL ? '&model=' + encodeURIComponent(process.env.GLOSS_MODEL) : '';
+  const hitw = (o, G) => { const g = new Set(G); return [o.filter(w => g.has(w)).length, G.length]; };
   for (const s of pick) {
     const G = clean(s.gloss);
     try {
-      const r = await (await fetch(base + '?loo&text=' + encodeURIComponent(s.translation.trim()))).json();
+      const r = await (await fetch(base + '?loo' + model + '&text=' + encodeURIComponent(s.translation.trim()))).json();
       if (!r.gloss) { console.log('失敗', s.translation, r); continue; }
-      const a = pairAgree(r.gloss, G), b = pairAgree(toGloss(s.translation, vocab).tokens.map(t => t.word), G);
+      const rw = toGloss(s.translation, vocab).tokens.map(t => t.word), a = pairAgree(r.gloss, G), b = pairAgree(rw, G);
+      const h1 = hitw(r.gloss, G), h2 = hitw(rw, G); wa[0] += h1[0]; wa[1] += h1[1]; wr[0] += h2[0]; wr[1] += h2[1];
       C[0] += a[0]; C[1] += a[1]; R[0] += b[0]; R[1] += b[1]; n++; if (r.gloss.at(-1) === G.at(-1)) last++;
     } catch (e) { console.log('錯誤', e.message); }
   }
-  console.log(`AI 評估 ${n} 句：詞序一致 規則 ${pct(R)} → AI ${pct(C)}；句尾詞正確 ${(100 * last / n).toFixed(1)}%`);
+  console.log(`AI 評估 ${n} 句：詞序一致 規則 ${pct(R)} → AI ${pct(C)}；用對手語詞 規則 ${pct(wr)} → AI ${pct(wa)}；句尾詞正確 ${(100 * last / n).toFixed(1)}%`);
 }

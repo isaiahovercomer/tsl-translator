@@ -49,15 +49,16 @@ export async function onRequest({ request, env }) {
   text = text.trim().slice(0, 200);
   if (!text) return json({ error: '缺少 text' }, 400);
 
-  const cache = caches.default, key = new Request(new URL('/api/gloss?c=' + encodeURIComponent(text + '|' + hint.join('/') + (loo ? '|loo' : '')), request.url).toString());
+  const cache = caches.default, key = new Request(new URL('/api/gloss?c=' + encodeURIComponent(text + '|' + hint.join('/') + (loo ? '|loo' : '') + (new URL(request.url).searchParams.get('model') || '')), request.url).toString());
   const hit = await cache.match(key); if (hit) return hit;
 
   if (!EX) EX = await (await env.ASSETS.fetch(new URL('/corpus/dict/gloss-examples.json', request.url))).json();
   const messages = [{ role: 'system', content: RULES }];
-  for (const [zh, g] of topExamples(text, 10, loo)) { messages.push({ role: 'user', content: zh }); messages.push({ role: 'assistant', content: g }); }
+  for (const [zh, g] of topExamples(text, 16, loo)) { messages.push({ role: 'user', content: zh }); messages.push({ role: 'assistant', content: g }); }
   messages.push({ role: 'user', content: text + (hint.length ? `\n（提示詞：${hint.join('、')}）` : '') });
 
-  const models = env.GLOSS_MODEL ? [env.GLOSS_MODEL, ...MODELS] : MODELS;
+  const qm = new URL(request.url).searchParams.get('model');   // 評估用：指定模型
+  const models = qm && /^@cf\//.test(qm) ? [qm] : env.GLOSS_MODEL ? [env.GLOSS_MODEL, ...MODELS] : MODELS;
   let lastErr = '';
   for (const model of models) {
     try {
