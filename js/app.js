@@ -3,15 +3,16 @@ import { FPS, CATS, catOf, decodeFeat, Recognizer, Segmenter, tokenize, makeSamp
 import { AvatarPlayer, normalizeSeq, drawAvatar } from './avatar.js';
 import { Camera, extractFromFile, drawOverlay } from './vision.js';
 import * as store from './store.js';
+import { toGloss, aiGloss, mapGloss } from './gloss.js';
 
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms = 2600) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), ms); }
 
 // ---------- 設定 ----------
-const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝', avatarKind: 'female', avatarUrl: '', prefCat: 'church', addCat: 'general' };
+const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝', avatarKind: 'female', avatarUrl: '', prefCat: 'church', addCat: 'general', glossMode: 'ai' };
 let S = { ...DEF };
 try { S = { ...DEF, ...JSON.parse(localStorage.getItem('tsl-settings') || '{}') }; } catch {}
 const aliasMap = () => Object.fromEntries(S.aliases.split('\n').map(l => l.split('=').map(x => x.trim())).filter(a => a.length === 2 && a[0] && a[1]));
@@ -68,8 +69,23 @@ async function applyAvatar() {
   $('avatarStatus').textContent = `語料庫：${byWord.size} 個詞、${samples.length} 筆樣本`;
 }
 let lastTokens = [];
+// 中文 → 手語詞序：AI（/api/gloss）→ 規則 → 逐詞
+let glossSeq = 0;
+async function glossTokens(text) {
+  const vocab = [...byWord.keys()], al = aliasMap();
+  if (S.glossMode === 'word') return { toks: tokenize(text, vocab, al), how: '' };
+  const rule = toGloss(text, vocab, al);
+  if (S.glossMode === 'ai' && navigator.onLine !== false) {
+    const g = await aiGloss(text, rule.tokens.filter(t => t.known).map(t => t.word));
+    if (g) return { toks: mapGloss(g, vocab, al), how: 'AI 手語語序：' + g.join('／') };
+  }
+  return { toks: rule.tokens, how: '規則手語語序：' + rule.tokens.map(t => t.word).join('／') };
+}
 async function playText(text) {
-  const toks = tokenize(text, [...byWord.keys()], aliasMap());
+  const my = ++glossSeq;
+  const { toks, how } = await glossTokens(text);
+  if (my !== glossSeq) return;   // 已經有新的一句，舊的不播
+  $('glossInfo').textContent = how;
   lastTokens = toks;
   $('speechChips').innerHTML = toks.map((t, i) => t.known
     ? `<span class="chip known" data-i="${i}">${esc(t.text)}${t.word !== t.text ? `<small>${esc(t.word)}</small>` : ''}</span>`
@@ -429,7 +445,7 @@ function fillSettings() {
   $('avatarSpeed').value = S.avatarSpeed; $('spVal').textContent = S.avatarSpeed + '×';
   $('rate').value = S.rate; $('rtVal').textContent = S.rate + '×'; $('aliases').value = S.aliases;
   if (!AVATAR_URLS[S.avatarKind] && !['2d', 'custom'].includes(S.avatarKind)) S.avatarKind = 'female';
-  $('prefCat').value = S.prefCat; $('addCat').value = S.addCat;
+  $('prefCat').value = S.prefCat; $('addCat').value = S.addCat; $('glossMode').value = S.glossMode;
   $('avatarKind').value = S.avatarKind; $('avatarUrl').value = S.avatarUrl; $('avatarUrl').hidden = S.avatarKind !== 'custom';
   const vs = ('speechSynthesis' in window) ? speechSynthesis.getVoices().filter(v => /zh/i.test(v.lang)) : [];
   $('voice').innerHTML = '<option value="">自動（台灣華語優先）</option>' + vs.map(v => `<option value="${esc(v.voiceURI)}" ${v.voiceURI === S.voice ? 'selected' : ''}>${esc(v.name)}（${esc(v.lang)}）</option>`).join('');
@@ -438,7 +454,7 @@ for (const [id, out, suf] of [['threshold', 'thVal', ''], ['avatarSpeed', 'spVal
 $('saveSettings').onclick = () => {
   const old = S.avatarKind + S.avatarUrl;
   S = { threshold: +$('threshold').value, avatarSpeed: +$('avatarSpeed').value, voice: $('voice').value, rate: +$('rate').value, aliases: $('aliases').value,
-    avatarKind: $('avatarKind').value, avatarUrl: $('avatarUrl').value.trim(), prefCat: $('prefCat').value, addCat: $('addCat').value };
+    avatarKind: $('avatarKind').value, avatarUrl: $('avatarUrl').value.trim(), prefCat: $('prefCat').value, addCat: $('addCat').value, glossMode: $('glossMode').value };
   try { localStorage.setItem('tsl-settings', JSON.stringify(S)); } catch {}
   player.speed = S.avatarSpeed; toast('已儲存');
   if (S.avatarKind + S.avatarUrl !== old) applyAvatar();
@@ -454,4 +470,4 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 
 route();
 loadCorpus().then(applyAvatar);
-window.__tsl = { recog, store, get samples() { return samples; }, playText, loadCorpus, openEditor, player, preview };
+window.__tsl = { glossTokens, recog, store, get samples() { return samples; }, playText, loadCorpus, openEditor, player, preview };

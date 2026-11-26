@@ -1,0 +1,8 @@
+# Cloudflare Pages 設定（tslinterpreter.pages.dev）
+# 靜態網站就是 repo 根目錄；functions/ 是伺服器端小程式（/api/gloss 用 Workers AI 轉手語詞序）
+name = "tslinterpreter"
+pages_build_output_dir = "."
+compatibility_date = "2026-11-01"
+
+[ai]
+binding = "AI"

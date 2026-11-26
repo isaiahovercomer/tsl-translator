@@ -1,6 +1,6 @@
 // sw.js — 離線快取：程式本身先存起來；模型與語料用到才快取
-const V = 'tsl-v0.3.0';
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'js/app.js', 'js/core.js', 'js/avatar.js', 'js/avatar3d.js', 'js/vision.js', 'js/store.js', 'icons/icon.svg', 'icons/icon-192.png'];
+const V = 'tsl-v0.4.0';
+const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'js/app.js', 'js/core.js', 'js/avatar.js', 'js/avatar3d.js', 'js/vision.js', 'js/store.js', 'js/gloss.js', 'icons/icon.svg', 'icons/icon-192.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V && k !== 'tsl-models').map(k => caches.delete(k))))); self.clients.claim(); });
 self.addEventListener('fetch', e => {

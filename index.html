@@ -96,6 +96,7 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
       <div class="stage"><canvas id="avatar"></canvas></div>
       <div class="caption" id="speechText"><span class="muted">按「開始聆聽」，說話就會即時轉成手語</span></div>
       <div class="chips" id="speechChips"></div>
+      <div class="muted" id="glossInfo" style="font-size:.85em;min-height:1.2em"></div>
       <div class="row">
         <button class="primary" id="btnListen">🎤 開始聆聽</button>
         <button id="btnFlip" title="把人像轉 180 度，給坐對面的人看">🔄 轉向對面</button>
@@ -232,6 +233,10 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
       <input type="url" id="avatarUrl" placeholder="https://…/avatar.glb" hidden>
       <div class="row"><label class="grow">同一個詞有兩種分類時，優先用：<select id="prefCat" style="width:100%">
         <option value="church">召會生活用語</option><option value="general">一般生活用語</option></select></label></div>
+      <div class="row"><label class="grow">中文 → 手語詞序：<select id="glossMode" style="width:100%">
+        <option value="ai">AI 調整成台灣手語語序（離線或太慢時用規則）</option>
+        <option value="rule">規則調整（時間詞放前、否定／疑問放後，不用網路）</option>
+        <option value="word">照中文逐詞比</option></select></label></div>
       <label>手語人像速度：<b id="spVal"></b><input type="range" id="avatarSpeed" min="0.5" max="1.6" step="0.05"></label>
       <div class="row"><label class="grow">中文語音：<select id="voice" style="width:100%"></select></label></div>
       <label>語速：<b id="rtVal"></b><input type="range" id="rate" min="0.6" max="1.5" step="0.05"></label>
