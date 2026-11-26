@@ -2,7 +2,7 @@
 // POST {text, hint?: string[]}  或  GET ?text=…   →  {gloss: string[], model}
 // 做法（參考工研院：文字 → Gloss → 骨架）：從中正辭典 546 句例句挑最像的 10 句當範例，請 AI 照樣改寫。
 // 綁定：wrangler.toml 的 [ai] binding = "AI"（不用 API 金鑰）。可用環境變數 GLOSS_MODEL 換模型。
-const MODELS = ['@cf/meta/llama-3.3-70b-instruct-fp8-fast', '@cf/qwen/qwen3-30b-a3b-fp8', '@cf/meta/llama-3.1-8b-instruct-fast'];
+const MODELS = ['@cf/meta/llama-3.3-70b-instruct-fp8-fast', '@cf/meta/llama-3.1-8b-instruct-fast'];
 let EX = null;
 const DROP = new Set('的 了 是 嗎 呢 吧 啊 呀 嘛 喔 啦 得 著 把 被'.split(' '));
 
@@ -50,7 +50,7 @@ export async function onRequest({ request, env }) {
   if (!text) return json({ error: '缺少 text' }, 400);
 
   const cache = caches.default, key = new Request(new URL('/api/gloss?c=' + encodeURIComponent(text + '|' + hint.join('/') + (loo ? '|loo' : '') + (new URL(request.url).searchParams.get('model') || '')), request.url).toString());
-  const hit = await cache.match(key); if (hit) return hit;
+  const hit = loo ? null : await cache.match(key); if (hit) return hit;
 
   if (!EX) EX = await (await env.ASSETS.fetch(new URL('/corpus/dict/gloss-examples.json', request.url))).json();
   const messages = [{ role: 'system', content: RULES }];
@@ -66,7 +66,7 @@ export async function onRequest({ request, env }) {
       if (gloss.length) {
         const res = json({ gloss, model });
         res.headers.set('cache-control', 'public, max-age=86400');
-        await cache.put(key, res.clone());
+        if (!loo) await cache.put(key, res.clone());
         return res;
       }
     } catch (e) { lastErr = String(e?.message || e); }
