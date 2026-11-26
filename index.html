@@ -74,6 +74,7 @@ progress{width:100%;height:10px}
 label.inline{display:flex;align-items:center;gap:6px}
 details summary{cursor:pointer;font-weight:600}
 code{background:#eee8dc;padding:1px 5px;border-radius:5px}
+.qbar{flex-wrap:wrap;gap:6px}.qbar select{flex:1 1 100%}
 </style>
 </head>
 <body>
@@ -97,6 +98,19 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
       <div class="caption" id="speechText"><span class="muted">按「開始聆聽」，說話就會即時轉成手語</span></div>
       <div class="chips" id="speechChips"></div>
       <div class="muted" id="glossInfo" style="font-size:.85em;min-height:1.2em"></div>
+      <div class="muted" id="nowText" style="font-size:.85em"></div>
+      <div class="row qbar">
+        <select id="playMode" title="會議一直講的時候，人像怎麼比">
+          <option value="queue">連續：照順序一句一句比</option>
+          <option value="latest">即時：落後就跳到最新一句</option>
+          <option value="step">一句一句：按「下一句」或點人像</option>
+        </select>
+        <button id="btnPause" title="暫停／繼續（鍵盤 P）">⏸ 暫停</button>
+        <button id="btnNext" title="下一句（空白鍵或 →）">⏭ 下一句</button>
+        <button id="btnReplay" title="重播這一句（鍵盤 R）">🔁 重播</button>
+        <button id="btnClearQ" title="清掉還沒比的句子">🧹 清除</button>
+      </div>
+      <div class="muted" id="queueInfo" style="font-size:.85em;min-height:1.2em"></div>
       <div class="row">
         <button class="primary" id="btnListen">🎤 開始聆聽</button>
         <button id="btnFlip" title="把人像轉 180 度，給坐對面的人看">🔄 轉向對面</button>
@@ -224,11 +238,15 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
       <h2>⚙️ 設定</h2>
       <label>辨識嚴格度（越小越嚴格）：<b id="thVal"></b><input type="range" id="threshold" min="0.4" max="3" step="0.05"></label>
       <div class="row"><label class="grow">手語人像：<select id="avatarKind" style="width:100%">
+        <option value="2d-f1">2D 插畫人像：女・長髮</option>
+        <option value="2d-f2">2D 插畫人像：女・短髮</option>
+        <option value="2d-m1">2D 插畫人像：男・短髮</option>
+        <option value="2d-m2">2D 插畫人像：男・眼鏡</option>
         <option value="female">3D 寫實人像：女性</option>
         <option value="male">3D 寫實人像：男性</option>
         <option value="eva">3D 卡通人像：Eva（Performs）</option>
         <option value="custom">3D 人像：自訂 .glb 網址（Mixamo／Biped 骨架）</option>
-        <option value="2d">2D 簡筆人像（最省電）</option>
+        <option value="2d">簡筆人像（最省電）</option>
       </select></label></div>
       <input type="url" id="avatarUrl" placeholder="https://…/avatar.glb" hidden>
       <div class="row"><label class="grow">同一個詞有兩種分類時，優先用：<select id="prefCat" style="width:100%">

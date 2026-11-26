@@ -1,5 +1,6 @@
 // avatar.js — 用骨架資料畫出打手語的人像，並把多個詞接起來播放
 import { OFF, PI, FI, P, FPS, has, newFrame, bodyRef } from './core.js';
+import { drawCartoon } from './avatar2d.js';
 
 // 標準身形（畫布正規化座標）：肩膀中點、肩寬
 const STD = { cx: 0.5, cy: 0.46, w: 0.3 };
@@ -100,6 +101,7 @@ export function drawAvatar(ctx, f, opt = {}) {
   ctx.clearRect(0, 0, W, H);
   if (opt.captionOnly) return drawCaption(ctx, opt.caption, W, H, S);
   if (opt.bg) { ctx.fillStyle = opt.bg; ctx.fillRect(0, 0, W, H); }
+  if (opt.style) return drawCartoon(ctx, f, opt.style, opt);   // 2D 插畫人像（男女各兩款）
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const sw = Math.hypot(X(p(PI.lSh)) - X(p(PI.rSh)), Y(p(PI.lSh)) - Y(p(PI.rSh)));
 
@@ -186,7 +188,7 @@ export class AvatarPlayer {
   constructor(canvas, opt = {}) {
     this.c = canvas; this.ctx = canvas.getContext('2d'); this.opt = opt;
     this.timeline = []; this.t0 = 0; this.cur = REST; this.idleSince = 0; this.onWord = opt.onWord || (() => {});
-    this.speed = 1; this.lastWord = null;
+    this.speed = 1; this.lastWord = null; this.style = opt.style || null; this.pausedAt = 0;
     const loop = (ts) => { try { this.tick(ts); } catch (e) { console.warn(e); } requestAnimationFrame(loop); };
     requestAnimationFrame(loop);
   }
@@ -220,14 +222,19 @@ export class AvatarPlayer {
     }
     for (let i = 1; i <= 8; i++) push(lerpFrame(start, REST, ease(i / 9)), null);
   }
-  stop() { this.timeline = []; }
+  get busy() { return this.timeline.length > 0; }
+  get paused() { return this.pausedAt > 0; }
+  pause() { if (!this.pausedAt) this.pausedAt = performance.now(); }
+  resume() { if (this.pausedAt) { this.t0 += performance.now() - this.pausedAt; this.pausedAt = 0; } }
+  stop() { const was = this.timeline.length; this.timeline = []; this.pausedAt = 0; if (was) this.idle(); }
+  idle() { setTimeout(() => this.opt.onIdle && this.opt.onIdle(), 0); }
   tick(ts) {
     if (this.c.width !== Math.round(this.c.getBoundingClientRect().width * Math.min(2, window.devicePixelRatio || 1))) this.resize();
     let f = this.cur, word = null;
     if (this.timeline.length) {
-      const x = Math.max(0, (ts - this.t0) / 1000 * FPS * this.speed);
+      const x = Math.max(0, ((this.pausedAt || ts) - this.t0) / 1000 * FPS * this.speed);
       const i = Math.floor(x);
-      if (i >= this.timeline.length - 1) { f = this.timeline[this.timeline.length - 1].f; this.timeline = []; }
+      if (i >= this.timeline.length - 1) { f = this.timeline[this.timeline.length - 1].f; this.timeline = []; this.idle(); }
       else { f = lerpFrame(this.timeline[i].f, this.timeline[i + 1].f, x - i); word = this.timeline[i].word; }
     } else {
       // 待機時輕微呼吸
@@ -239,7 +246,7 @@ export class AvatarPlayer {
     if (!this.c.offsetParent) return;          // 分頁沒顯示就不畫，省電
     const caption = word || this.opt.idleCaption || '';
     if (this.r3d && this.r3d.ready) { this.r3d.render(f); drawAvatar(this.ctx, f, { caption, captionOnly: true }); }
-    else drawAvatar(this.ctx, f, { ...this.opt, caption });
+    else drawAvatar(this.ctx, f, { ...this.opt, style: this.style, caption: this.pausedAt ? '⏸ ' + caption : caption });
   }
 }
 const ease = t => t * t * (3 - 2 * t);

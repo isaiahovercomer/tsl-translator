@@ -5,16 +5,21 @@ import { Camera, extractFromFile, drawOverlay } from './vision.js';
 import * as store from './store.js';
 import { toGloss, aiGloss, mapGloss } from './gloss.js';
 
-const VERSION = '0.4.0';
+const VERSION = '0.5.0';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms = 2600) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), ms); }
 
 // ---------- 設定 ----------
-const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝', avatarKind: 'female', avatarUrl: '', prefCat: 'church', addCat: 'general', glossMode: 'ai' };
+const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝', avatarKind: '2d-f1', avatarUrl: '', prefCat: 'church', addCat: 'general', glossMode: 'ai', playMode: 'queue' };
 let S = { ...DEF };
 try { S = { ...DEF, ...JSON.parse(localStorage.getItem('tsl-settings') || '{}') }; } catch {}
+// v0.5：預設改成 2D 插畫人像（之前選 3D 寫實的，換成同性別的 2D）
+if (!S.v5) { S.avatarKind = { female: '2d-f1', male: '2d-m1' }[S.avatarKind] || S.avatarKind; S.v5 = 1; }
+const saveS = () => { try { localStorage.setItem('tsl-settings', JSON.stringify(S)); } catch {} };
+saveS();
+const STYLE_KINDS = ['2d-f1', '2d-f2', '2d-m1', '2d-m2'];
 const aliasMap = () => Object.fromEntries(S.aliases.split('\n').map(l => l.split('=').map(x => x.trim())).filter(a => a.length === 2 && a[0] && a[1]));
 
 // ---------- 分頁 ----------
@@ -52,7 +57,7 @@ async function loadCorpus() {
 }
 
 // ---------- 對話：聽人說話 → 人像 ----------
-const player = new AvatarPlayer($('avatar'), { onWord: w => highlightWord(w) });
+const player = new AvatarPlayer($('avatar'), { onWord: w => highlightWord(w), onIdle: () => pump() });
 player.speed = S.avatarSpeed;
 // 3D 人像：寫實女性／男性（微軟 Rocketbox，MIT），或自訂 Mixamo／Biped 骨架 .glb；載入失敗就用 2D
 const AVATAR_URLS = {
@@ -62,7 +67,9 @@ const AVATAR_URLS = {
 };
 const vAsp = v => v && v.videoWidth && v.videoHeight ? +(v.videoWidth / v.videoHeight).toFixed(3) : undefined;
 async function applyAvatar() {
-  const url = S.avatarKind === '2d' ? null : S.avatarKind === 'custom' ? S.avatarUrl.trim() || null : AVATAR_URLS[S.avatarKind] || AVATAR_URLS.female;
+  const style = STYLE_KINDS.includes(S.avatarKind) ? S.avatarKind.slice(3) : null;
+  player.style = preview.style = style;
+  const url = (S.avatarKind === '2d' || style) ? null : S.avatarKind === 'custom' ? S.avatarUrl.trim() || null : AVATAR_URLS[S.avatarKind] || AVATAR_URLS.female;
   if (url) $('avatarStatus').textContent = '3D 人像載入中…';
   try { await Promise.all([player.set3D(url), preview.set3D(url)]); }
   catch (e) { console.warn(e); toast('3D 人像載入失敗，先用 2D 人像：' + e.message, 4000); player.set3D(null); preview.set3D(null); }
@@ -81,15 +88,9 @@ async function glossTokens(text) {
   }
   return { toks: rule.tokens, how: '規則手語語序：' + rule.tokens.map(t => t.word).join('／') };
 }
-async function playText(text) {
-  const my = ++glossSeq;
+// 一句 → 準備好要比的資料（詞序、骨架）
+async function prepare(text) {
   const { toks, how } = await glossTokens(text);
-  if (my !== glossSeq) return;   // 已經有新的一句，舊的不播
-  $('glossInfo').textContent = how;
-  lastTokens = toks;
-  $('speechChips').innerHTML = toks.map((t, i) => t.known
-    ? `<span class="chip known" data-i="${i}">${esc(t.text)}${t.word !== t.text ? `<small>${esc(t.word)}</small>` : ''}</span>`
-    : `<a class="chip" data-i="${i}" href="${dictUrl(t.text)}" target="_blank" rel="noopener" title="語料庫還沒有，點一下查台灣手語線上辭典">${esc(t.text)}</a>`).join('');
   const picks = toks.filter(t => t.known).map(t => {
     const all = byWord.get(t.word), pref = all.filter(s => catOf(s) === S.prefCat), list = pref.length ? pref : all;
     // 本機錄的優先（通常比較清楚），其次手部偵測品質好的
@@ -98,8 +99,49 @@ async function playText(text) {
   });
   const loaded = await Promise.all(picks.map(p => store.loadSample(p.s).catch(() => null)));
   const items = picks.filter((p, i) => loaded[i]).map(p => ({ word: p.word, frames: sampleFrames(p.s), aspect: sampleAspect(p.s) }));
-  if (items.length) player.play(items);
-  else if (text.trim()) $('avatarStatus').textContent = '語料庫裡還沒有這些詞，先到「新增語料」錄起來。';
+  return { text, toks, how, items };
+}
+function showEntry(r) {
+  $('glossInfo').textContent = r.how;
+  lastTokens = r.toks;
+  $('speechChips').innerHTML = r.toks.map((t, i) => t.known
+    ? `<span class="chip known" data-i="${i}">${esc(t.text)}${t.word !== t.text ? `<small>${esc(t.word)}</small>` : ''}</span>`
+    : `<a class="chip" data-i="${i}" href="${dictUrl(t.text)}" target="_blank" rel="noopener" title="語料庫還沒有，點一下查台灣手語線上辭典">${esc(t.text)}</a>`).join('');
+}
+
+// ---- 播放佇列：連續／即時（只比最新一句）／一句一句（按「下一句」或點人像）----
+const Q = []; let lastEntry = null, stepGo = false, pumping = false;
+function enqueue(text) {
+  if (S.playMode === 'latest') Q.length = 0;     // 落後就丟掉還沒比的舊句子
+  Q.push({ text, p: prepare(text).catch(e => (console.warn(e), null)) });
+  renderQueue(); pump();
+}
+async function pump() {
+  if (pumping) return; pumping = true;
+  try {
+    while (Q.length && !player.busy && !player.paused && (S.playMode !== 'step' || stepGo)) {
+      const e = Q.shift(); stepGo = false; renderQueue();
+      const r = await e.p;
+      if (!r) continue;
+      if (!r.items.length) { showEntry(r); $('avatarStatus').textContent = '語料庫裡還沒有這些詞，先到「新增語料」錄起來。'; continue; }
+      startEntry(r);
+    }
+  } finally { pumping = false; renderQueue(); }
+}
+function startEntry(r) { lastEntry = r; showEntry(r); $('nowText').textContent = r.text; player.play(r.items, false); renderQueue(); }
+function renderQueue() {
+  const n = Q.length;
+  $('queueInfo').textContent = n ? `還有 ${n} 句：${Q[0].text.slice(0, 16)}${Q[0].text.length > 16 ? '…' : ''}` : (S.playMode === 'step' && !player.busy ? '等下一句' : '');
+  $('btnNext').classList.toggle('primary', S.playMode === 'step' && n > 0 && !player.busy);
+  $('btnPause').textContent = player.paused ? '▶ 繼續' : '⏸ 暫停';
+}
+function nextSentence() { stepGo = true; if (player.busy) player.stop(); else pump(); }
+// 打字測試：馬上比（插隊）
+async function playText(text) {
+  if (!text.trim()) return;
+  const r = await prepare(text);
+  if (!r.items.length) { showEntry(r); $('avatarStatus').textContent = '語料庫裡還沒有這些詞，先到「新增語料」錄起來。'; return; }
+  player.resume(); startEntry(r);
 }
 function highlightWord(w) {
   document.querySelectorAll('#speechChips .chip').forEach(c => c.classList.remove('cur'));
@@ -110,6 +152,18 @@ function highlightWord(w) {
 $('btnType').onclick = () => playText($('typeText').value);
 $('typeText').onkeydown = e => { if (e.key === 'Enter') playText(e.target.value); };
 $('btnFlip').onclick = () => $('pAvatar').classList.toggle('flip');
+$('btnPause').onclick = () => { if (player.paused) { player.resume(); pump(); } else player.pause(); renderQueue(); };
+$('btnNext').onclick = nextSentence;
+$('btnReplay').onclick = () => { if (lastEntry) { player.resume(); player.stop(); startEntry(lastEntry); } };
+$('btnClearQ').onclick = () => { Q.length = 0; player.stop(); renderQueue(); };
+$('avatar').onclick = () => { if (S.playMode === 'step') nextSentence(); };   // 一句一句：點人像＝下一句
+$('playMode').onchange = e => { S.playMode = e.target.value; saveS(); if (S.playMode === 'latest' && Q.length > 1) Q.splice(0, Q.length - 1); renderQueue(); pump(); };
+document.addEventListener('keydown', e => {
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName) || !$('v-talk').offsetParent) return;
+  if (e.key === ' ' || e.key === 'ArrowRight') { e.preventDefault(); nextSentence(); }
+  else if (e.key === 'p') $('btnPause').click();
+  else if (e.key === 'r') $('btnReplay').click();
+});
 
 // 語音辨識（瀏覽器內建，台灣華語）
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -121,7 +175,7 @@ function startListen() {
     let interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const r = e.results[i];
-      if (r.isFinal) { const t = r[0].transcript.trim(); if (t) { $('speechText').textContent = t; playText(t); } }
+      if (r.isFinal) { const t = r[0].transcript.trim(); if (t) { $('speechText').textContent = t; enqueue(t); } }
       else interim += r[0].transcript;
     }
     if (interim) $('speechText').innerHTML = `<span class="muted">${esc(interim)}…</span>`;
@@ -393,7 +447,7 @@ function autoTrim() {
 function edDraw() {
   const c = $('edCanvas'); const r = c.getBoundingClientRect(); const d = Math.min(2, devicePixelRatio || 1);
   if (c.width !== Math.round(r.width * d)) { c.width = Math.round(r.width * d); c.height = Math.round(r.height * d); }
-  drawAvatar(c.getContext('2d'), ed.norm[ed.pos], { caption: (ed.pos >= ed.a && ed.pos <= ed.b) ? '選取中' : '' });
+  drawAvatar(c.getContext('2d'), ed.norm[ed.pos], { style: player.style, caption: (ed.pos >= ed.a && ed.pos <= ed.b) ? '選取中' : '' });
   $('edTime').textContent = `${(ed.pos / FPS).toFixed(1)} 秒 / ${(ed.frames.length / FPS).toFixed(1)} 秒`;
 }
 const edRange = () => { $('edRange').textContent = `${(ed.a / FPS).toFixed(1)} – ${(ed.b / FPS).toFixed(1)} 秒（${ed.b - ed.a + 1} 格）`; };
@@ -444,7 +498,8 @@ function fillSettings() {
   $('threshold').value = S.threshold; $('thVal').textContent = S.threshold;
   $('avatarSpeed').value = S.avatarSpeed; $('spVal').textContent = S.avatarSpeed + '×';
   $('rate').value = S.rate; $('rtVal').textContent = S.rate + '×'; $('aliases').value = S.aliases;
-  if (!AVATAR_URLS[S.avatarKind] && !['2d', 'custom'].includes(S.avatarKind)) S.avatarKind = 'female';
+  if (!AVATAR_URLS[S.avatarKind] && !['2d', 'custom', ...STYLE_KINDS].includes(S.avatarKind)) S.avatarKind = '2d-f1';
+  $('playMode').value = S.playMode;
   $('prefCat').value = S.prefCat; $('addCat').value = S.addCat; $('glossMode').value = S.glossMode;
   $('avatarKind').value = S.avatarKind; $('avatarUrl').value = S.avatarUrl; $('avatarUrl').hidden = S.avatarKind !== 'custom';
   const vs = ('speechSynthesis' in window) ? speechSynthesis.getVoices().filter(v => /zh/i.test(v.lang)) : [];
@@ -453,9 +508,9 @@ function fillSettings() {
 for (const [id, out, suf] of [['threshold', 'thVal', ''], ['avatarSpeed', 'spVal', '×'], ['rate', 'rtVal', '×']]) $(id).oninput = e => { $(out).textContent = e.target.value + suf; };
 $('saveSettings').onclick = () => {
   const old = S.avatarKind + S.avatarUrl;
-  S = { threshold: +$('threshold').value, avatarSpeed: +$('avatarSpeed').value, voice: $('voice').value, rate: +$('rate').value, aliases: $('aliases').value,
+  S = { ...S, threshold: +$('threshold').value, avatarSpeed: +$('avatarSpeed').value, voice: $('voice').value, rate: +$('rate').value, aliases: $('aliases').value,
     avatarKind: $('avatarKind').value, avatarUrl: $('avatarUrl').value.trim(), prefCat: $('prefCat').value, addCat: $('addCat').value, glossMode: $('glossMode').value };
-  try { localStorage.setItem('tsl-settings', JSON.stringify(S)); } catch {}
+  saveS();
   player.speed = S.avatarSpeed; toast('已儲存');
   if (S.avatarKind + S.avatarUrl !== old) applyAvatar();
 };
@@ -470,4 +525,4 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 
 route();
 loadCorpus().then(applyAvatar);
-window.__tsl = { glossTokens, recog, store, get samples() { return samples; }, playText, loadCorpus, openEditor, player, preview };
+window.__tsl = { glossTokens, enqueue, recog, store, get samples() { return samples; }, playText, loadCorpus, openEditor, player, preview };
