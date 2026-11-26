@@ -6,7 +6,7 @@ import * as store from './store.js';
 import { toGloss, aiGloss, mapGloss } from './gloss.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.7.2';
+const VERSION = '0.7.3';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,6 +19,8 @@ try { S = { ...DEF, ...JSON.parse(localStorage.getItem('tsl-settings') || '{}') 
 // v0.5：預設改成 2D 插畫人像（之前選 3D 寫實的，換成同性別的 2D）
 if (!S.v5) { S.avatarKind = { female: '2d-f1', male: '2d-m1' }[S.avatarKind] || S.avatarKind; S.v5 = 1; }
 // v0.7：預設改成插畫風 3D 主播（VRM）
+// v0.7.3：使用者選定插畫風 A3（扁平色塊）；選單只留 6 位插畫風主播＋簡筆＋自訂，其他選項換成同性別的插畫風主播
+if (S.v7 && !S.v8) { const k = S.avatarKind; if (!/^vrm-[fm][123]$/.test(k) && !['2d', 'custom'].includes(k)) S.avatarKind = /(^|-)m(\d|ale|$)/.test(k) ? 'vrm-m1' : 'vrm-f1'; S.v8 = 1; }   // 男：male、biz-m1、2d-m2、vrm-m3-flat…；female 不算
 if (!S.v7) { S.avatarKind = { '2d-f1': 'vrm-f1', '2d-f2': 'vrm-f2', '2d-m1': 'vrm-m1', '2d-m2': 'vrm-m2', female: 'vrm-f1', male: 'vrm-m1' }[S.avatarKind] || S.avatarKind; S.v7 = 1; }
 const saveS = () => { try { localStorage.setItem('tsl-settings', JSON.stringify(S)); } catch {} };
 saveS();
@@ -72,12 +74,13 @@ function stopAll() { if (realOn) real.stop(); else player.stop(); setTimeout(pum
 // 3D 人像：寫實女性／男性（微軟 Rocketbox，MIT），或自訂 Mixamo／Biped 骨架 .glb；載入失敗就用 2D
 const AVATAR_URLS = {
   // 插畫風 3D（VRoid）：#tint=材質名稱:顏色 把衣服／頭髮調成深色，手和臉才清楚
-  'vrm-f1': 'avatars/vrm-f1.vrm',                                  // 黑長髮、深藍背心
-  'vrm-f2': 'avatars/vrm-f2.vrm#tint=Tops:4a5a8c',                 // 短髮、米色毛衣改深藍
-  'vrm-f3': 'avatars/vrm-f3.vrm',                                  // 深色短髮、深藍背心
-  'vrm-m1': 'avatars/vrm-m1.vrm',                                  // 深色短髮、深色外套
-  'vrm-m2': 'avatars/vrm-m2.vrm#tint=Hair:5a4640',                 // 背心領帶、頭髮改深棕
-  'vrm-m3': 'avatars/vrm-m3.vrm#tint=Tops:4a5470',                 // 黑短髮、白帽T改深藍灰
+  // 使用者選定的畫法：A3 扁平色塊（look=flat）
+  'vrm-f1': 'avatars/vrm-f1.vrm#look=flat',                        // 黑長髮、深藍背心
+  'vrm-f2': 'avatars/vrm-f2.vrm#tint=Tops:4a5a8c&look=flat',       // 短髮、米色毛衣改深藍
+  'vrm-f3': 'avatars/vrm-f3.vrm#look=flat',                        // 深色短髮、深藍背心
+  'vrm-m1': 'avatars/vrm-m1.vrm#look=flat',                        // 深色短髮、深色外套
+  'vrm-m2': 'avatars/vrm-m2.vrm#tint=Hair:5a4640&look=flat',       // 背心領帶、頭髮改深棕
+  'vrm-m3': 'avatars/vrm-m3.vrm#tint=Tops:4a5470&look=flat',       // 黑短髮、白帽T改深藍灰
   'toon-f': 'avatars/tw-female.glb#toon', 'toon-m': 'avatars/tw-male.glb#toon',
   // 成熟插畫風：Rocketbox 商務人士（MIT），貼圖做成插畫風＋卡通著色描邊
   'biz-f1': 'avatars/biz-f1.glb#toon', 'biz-f2': 'avatars/biz-f2.glb#toon', 'biz-m1': 'avatars/biz-m1.glb#toon', 'biz-m2': 'avatars/biz-m2.glb#toon',
