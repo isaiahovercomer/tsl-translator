@@ -1,5 +1,7 @@
 # 交接報告：主恢復台灣手語對話翻譯（2026-11-26 晚上，v0.12.0）
 
+## v0.12.1：「聊天」改「交通」
+
 ## v0.12.0：改名、圖示、預覽縮圖、上半身特寫、「手譯員」
 - 網站名稱改成「主恢復台灣手語對話翻譯」（title、標題列、manifest name；主畫面短名「主恢復手語翻譯」）。
 - 新圖示：深藍底＋金色對話框＋🤟（我愛你）手＋聲音弧線（`icons/icon.svg`、`icon-192/512.png`、`apple-touch-icon.png` 180px；manifest 分 any／maskable）。
@@ -145,7 +147,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.12.0
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.12.1
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。
