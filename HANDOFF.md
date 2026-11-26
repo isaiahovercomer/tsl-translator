@@ -8,7 +8,7 @@
 3. **比對放背景執行緒**：`js/spot-client.js`（主執行緒代理，介面同 Spotter）＋`js/recog-worker.js`（module worker 裡跑 Recognizer＋Spotter）。語料變了才送整包特徵、換情境只送詞集合。開不起來（舊瀏覽器）自動改回主執行緒；網址 `#noworker` 可強制主執行緒。
 4. **效能顯示**：vision.js Camera 加 `stats {fps, ms}`、`onStats`（每 2 秒）；鏡頭卡片下方顯示「鏡頭 N 格/秒・偵測 N ms・比對 N ms（背景）」，低於 9 格/秒提醒一次。取格時間修正（容許 4ms），60Hz 螢幕上從約 12 格/秒變成接近 15 格/秒。
 - 測試：`tools/test_worker.py`（餵「謝謝／朋友／再見」語料影格 → 背景執行緒認出 3 個詞、紀錄 1 句、改正存成 src=correct；`#noworker` 也測）、test_f2f、test_collect 都通過。
-- ⚠️ 還在等使用者：Cloudflare `GH_COLLECT_TOKEN`（2026-11-26 22:20 查還是 ready:false）；Colab 重抽在跑。
+- Cloudflare `GH_COLLECT_TOKEN` 使用者已設好（22:25 GET /api/collect → ready:true）；測試上傳一筆 log → `collect/2026-11-26/測試-Claude-….json`（可刪），collect 分支已自動建立。Colab 重抽在跑。
 
 
 ## v0.14.0：收集模式＋Colab 重抽語料（WiLoR 3D 手＋臉部表情係數）
