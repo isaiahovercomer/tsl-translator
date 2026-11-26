@@ -1,14 +1,35 @@
-# 交接報告：主恢復台灣手語對話翻譯（2026-11-27，v0.19.0）
+# 交接報告：主恢復台灣手語對話翻譯（2026-11-27，v0.20.0）
 
 ## 下一步（下一個對話各開一個）
-1. **召會語料**：江啟禎影片自動切段＋字幕對齊預標（YT_COOKIES 已設；`tools/yt_batch.py`、`tools/align_sent.py` 可參考）→ 人工確認後進 `corpus/signs/church/`。先補 v0.19 會變字卡的召會用語（`js/church.js` 的 `CHURCH_TERMS`、`js/scenes.js` 的 `CHURCH_MISSING`）。
+1. **召會語料（接續）**：YouTube 仍擋雲端（GitHub Actions 的 YT_COOKIES 又被「Sign in to confirm you're not a bot」擋；box 點數 -3）。改用**使用者 Windows 電腦下載**：
+   - 已放好 `C:\Users\isaia\Videos\江啟禎\download_jcz.bat`（＋ .ps1）：雙擊 → 自動下載 yt-dlp、deno → 抓頻道最新 30 支「晨興聖言」影片（只抓畫面 ≤720p）到 `videos\`，標題寫進 `titles.tsv`，再跑一次接著抓下一批（archive.txt）。
+   - 下載好之後（這邊做）：`device_request_folder_access ~/Videos` → `device_stage_files` 把 `videos/*.mp4`＋`titles.tsv` 拿進來（每次 ≤50 個、≤500 MB）→ `python3 tools/yt_batch.py local <mp4...> --titles titles.tsv --out /tmp/jcz` → `python3 tools/yt_batch.py merge /tmp/jcz` → `python3 tools/church_align.py run` → `node tools/build_feats.mjs` → 推上去。先看 OCR 字幕品質（`corpus/raw/church/*.json` 的 subs）和各詞的 `conf`。
+   - 然後請使用者在網站「新增語料 → 🙏 召會語料確認」按 ✅／❌、送出；Actions「召會語料」每天 03:37 自動收進共用語料庫。
 2. **對話紀錄匯出**：面對面模式的聽到的話＋手語逐字稿（`logLines`，每句有 `slots`／`words`／`t`）匯出成文字檔或分享。
-3. **iPhone 實機測試**：Safari／加到主畫面；重點看 v0.19 的改詞視窗、長按說明（iOS 長按會跳選單，已關 `-webkit-touch-callout`）、轉手機後 3D 手譯員、全螢幕（iPhone 不支援元素全螢幕，提示訊息和改詞視窗仍在 #f2f 裡）。
-4. 之前留下的：
-   - 真人實測比較「模型 vs DTW」（設定 → 進階 → 手語辨識方式；打開「幫忙改進辨識」上傳紀錄，紀錄每句有 `eng`、模型模式另存 `dtw` 候選）。
-   - 請弟兄姊妹用收集模式錄（5 人以上就在 Colab 重跑 `tsl_recog_train.ipynb` → `models/v2/`、改 `js/model.js` 的 `MODEL_VER`）。
-   - Colab 重抽（`reextract` 分支）跑完後：`python tools/reextract.py merge` → `node tools/build_feats.mjs` → `tools/eval_fingers.py`。
-   - 例句切詞改用模型重新對齊；`_none` 類別擋掉不是手語的動作；離線時改用裝置上的語音辨識。
+3. **iPhone 實機測試**（見 v0.19 的重點）。
+4. 之前留下的（見下面 v0.19 以前）：真人實測「模型 vs DTW」、收集模式找人錄、Colab 重抽 merge、例句切詞改用模型重新對齊。
+
+## v0.20.0：召會語料——江啟禎弟兄影片自動切詞＋字幕對齊＋人工確認
+### ① 自動切詞 `tools/church_align.py`
+- 資料：`corpus/raw/church/<影片>.json`（整段骨架＋`subs` OCR 字幕）。每句字幕＝一個時間窗（出現前 1 秒到消失後 1.8 秒）。
+- 找詞（弱監督、跨影片）：同一個召會用語出現在很多句字幕裡 → 每個窗列出所有片段（長度 8～30 格、每 2 格；手沒在胸口以上比的不要）→ 找「有這個詞的句子裡幾乎都有相似片段（取最像的 60% 句子平均）、沒有這個詞（連單字都沒有）的句子裡沒有」的片段（比值＝有/沒有，越小越好）→ 用它在每個窗 DTW 找最像的 → 取前幾名的中位樣本再找一次 → `grow()` 試著一起延長切點。
+- 詞表＝`CHURCH_MISSING`＋`CHURCH_TERMS`（從 js 讀）；字幕少於 3 句＝`few`。
+- 輸出 `corpus/church/index.json`（每個詞 n、found、score、topd、conf high/mid/low、status）＋`corpus/church/cand/<詞>.json`（前 12 名，骨架已切好、前後多留 12 格 `s/e`、`a/b` 是切點、字幕、時間）。
+- `accept <檔或資料夾>`：網站下載的確認檔、或 collect 分支整個 `collect/` → 同一段以最後一次為準；✅ 存 `corpus/signs/church/jcz_<影片>_<格>.json`＋index（cat church、q 0.8、src `yt:影片@秒`），改成 ❌ 會拿掉；≥3 段 status=done。之後要 `node tools/build_feats.mjs`。
+- 驗證：`synth`（真辭典例句當背景，把某詞的辭典示範時間伸縮＋抖動插進 15 句、3 句字幕有但沒插、40 句沒有）：12 個詞**前 5 名 100% 切對**、全部 69～86%；切點重疊率中位數只有 0.3～0.4（找到的多半是詞的核心一段，偏短）→ 確認頁可以調切點。`test`（用 align_sent 的切點當答案）不可靠：那份切點很多是 4 格的退化結果，別再用。
+### ② 匯入改良 `tools/yt_batch.py`
+- `local`：自己電腦下載的 mp4（＋titles.tsv）→ OCR＋抽骨架，格式同 extract。
+- OCR 結果轉繁體 `to_trad()`（rapidocr 偏簡體：祷→禱；用 functions/api/_s2t.json）；影片太短（<60 個取樣）不判斷「一直在的字」。
+### ③ 網站「召會語料確認」頁（`#church`，`js/churchreview.js` 用到才載入；新增語料頁最上面有入口）
+- 詞列表（信心高、還沒確認的在前；字幕太少的灰掉）→ 選詞：2D 手譯員播片段、「▶ 看原影片這一段」（youtube-nocookie 嵌入，前後各多 1 秒）、字幕（詞標金色）、切點 ◀▶（每次 2 格，不超出存的範圍）、✅ 是／❌ 不是／⏭／🔁，鍵盤 Y／N／→／R。
+- ✅ 立刻存成本機語料（id `jcz_…`、cat church），這支手機馬上用得到（測試：說「弟兄姊妹平安」不再是字卡）；❌ 刪掉本機那筆。確認記在 localStorage `tsl-church-labels`。
+- ☁ 送出 → `/api/collect` samples `{kind:'label', term, id, ok, a, b}`（API 新增 label 種類，stats.json 多 `church: {詞: {ok, no}}`；collect_stats.py 同步）；💾 下載確認檔（`{kind:'tsl-church-labels', labels}`）。
+### ④ Actions「召會語料」`.github/workflows/church-corpus.yml`
+- 每天 03:37（台灣）：抓 collect 分支 → `church_align.py accept` → `build_feats.mjs` → commit。手動執行可勾「重新切詞」（`cut=true`，可指定詞）。
+### 其他
+- 版本 0.20.0（app.js、sw `tsl-v0.20.0`，SHELL 加 js/churchreview.js）。
+- 測試：`python3 tools/test_church.py`（假影片 3 支插「弟兄」→ 自動切詞前 5 名全對 → 確認頁：播放、調切點、原影片嵌入、✅×3 ❌×1、本機語料、說話不再字卡、送出、下載 → accept 收進 3 段、改 ❌ 拿掉 1 段；截圖 /home/claude/shots/v020_*.png）、`node tools/test_collect_api.mjs`、test_v019、test_collect、test_missing 都通過。
+- 試跑 Actions 批次匯入（2026-11-27 04:00）3 支全被擋，所以改成使用者電腦下載。
 
 ## v0.19.0：體驗檢查第一批修正
 ### ① AI 手語詞序：召會用語不換成別的意思（`js/church.js`，瀏覽器和雲端共用）
@@ -313,7 +334,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.19.0；分支 collect（收集資料＋stats.json）、models（辨識模型）、reextract（Colab 重抽）
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.20.0；分支 collect（收集資料＋stats.json）、models（辨識模型）、reextract（Colab 重抽）
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。

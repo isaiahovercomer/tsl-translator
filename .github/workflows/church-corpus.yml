@@ -1,0 +1,60 @@
+name: 召會語料（江啟禎弟兄影片：自動切詞／收進確認結果）
+
+# 每天自動：把網站「召會語料確認」頁大家送出的確認結果（collect 分支，kind=label）收進共用語料庫
+#   corpus/signs/church/jcz_*.json ＋ corpus/index.json ＋ corpus/feats.json。
+# 手動 Run workflow 勾「重新切詞」：用 corpus/raw/church/ 全部影片重跑 tools/church_align.py run（約每個詞 5～30 秒）。
+on:
+  schedule:
+    - cron: '37 19 * * *'      # 台灣時間每天 03:37
+  workflow_dispatch:
+    inputs:
+      cut:
+        description: 重新切詞（true／false）
+        default: 'false'
+      terms:
+        description: 只切這幾個詞（空白分開；空白＝全部召會用語）
+        default: ''
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: corpus-ingest
+  cancel-in-progress: false
+
+jobs:
+  church:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install numpy
+      - name: 重新切詞
+        if: ${{ inputs.cut == 'true' }}
+        run: python tools/church_align.py run ${{ inputs.terms != '' && format('--terms {0}', inputs.terms) || '' }}
+      - name: 收進確認結果
+        run: |
+          mkdir -p /tmp/c
+          if git fetch --depth=1 origin collect 2>/dev/null; then
+            git archive FETCH_HEAD collect | tar -x -C /tmp/c || true
+          fi
+          if [ -d /tmp/c/collect ] && [ -f corpus/church/index.json ]; then
+            python tools/church_align.py accept /tmp/c/collect
+          else
+            echo '還沒有確認結果或還沒切詞'
+          fi
+      - name: 更新辨識特徵
+        run: node tools/build_feats.mjs
+      - name: 存回 repo
+        run: |
+          git config user.name "tsl-corpus-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add corpus
+          git diff --cached --quiet || (git commit -m "語料：召會用語（江啟禎弟兄影片）確認結果" && git pull --rebase && git push)

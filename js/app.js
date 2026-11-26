@@ -14,7 +14,7 @@ import { prefetch, markOffline, offlineInfo, onWifi } from './offline.js';
 import { CloudSTT } from './stt.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.19.0';
+const VERSION = '0.20.0';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -44,10 +44,17 @@ const aliasMap = () => Object.fromEntries(S.aliases.split('\n').map(l => l.split
 function route() {
   let v = (location.hash || '#talk').slice(1);
   if (v === 'f2f') { if (!f2fOn) { history.replaceState(null, '', '#talk'); } v = 'talk'; }
-  const name = ['talk', 'corpus', 'add', 'settings'].includes(v) ? v : 'talk';
+  const name = ['talk', 'corpus', 'add', 'settings', 'church'].includes(v) ? v : 'talk';
   document.querySelectorAll('section.view').forEach(s => s.classList.toggle('on', s.id === 'v-' + name));
   document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', a.dataset.v === name));
   if (name !== 'add') stopRec();
+  if (name === 'church') openChurch();
+}
+// 召會語料確認（v0.20）：用到才載入
+let churchMod = null;
+async function openChurch() {
+  if (!churchMod) { churchMod = await import('./churchreview.js'); churchMod.initChurchReview({ toast, onLocalChange: () => loadCorpus() }); }
+  churchMod.openChurchReview();
 }
 addEventListener('hashchange', route);
 

@@ -114,6 +114,22 @@ def pick_subs(tmp, vid):
 
 
 # ---------- 燒在畫面上的字幕：OCR ----------
+_S2T = None
+
+
+def to_trad(t):
+    """OCR 模型偏簡體（禱→祷、題→题），用 functions/api/_s2t.json（同語音辨識）轉回繁體；「台」不轉。"""
+    global _S2T
+    if _S2T is None:
+        d = json.loads((ingest.ROOT / 'functions' / 'api' / '_s2t.json').read_text('utf-8'))
+        c = list(d['c'])                      # 字串逐字（4 位元組的字也算一個）
+        _S2T = ({c[i]: c[i + 1] for i in range(0, len(c) - 1, 2)}, d.get('p', {}))
+    m, ph = _S2T
+    for k, v in ph.items():
+        t = t.replace(k, v)
+    return ''.join(m.get(ch, ch) for ch in t)
+
+
 def ocr_subs(video_path, step=0.5, width=960):
     """每 0.5 秒讀一次畫面上的中文字（rapidocr），去掉一直都在的字（標題、浮水印），
     連續相同的字合併成一句 → [[開始, 結束, 文字]]。"""
@@ -136,7 +152,7 @@ def ocr_subs(video_path, step=0.5, width=960):
         res, _ = ocr(img)
         lines = []
         for box, txt, conf in res or []:
-            txt = re.sub(r'\s+', '', txt)
+            txt = to_trad(re.sub(r'\s+', '', txt))
             if float(conf) < 0.6 or not re.search(r'[\u4e00-\u9fff]', txt):
                 continue
             yc = sum(p[1] for p in box) / 4 / img.shape[0]
@@ -151,7 +167,7 @@ def ocr_subs(video_path, step=0.5, width=960):
     # 一直出現的字（超過 40% 的畫面）是標題或浮水印，不算字幕
     from collections import Counter
     freq = Counter(txt for _, ls in samples for txt in {x[0] for x in ls})
-    static = {k for k, v in freq.items() if v > 0.4 * len(samples)}
+    static = {k for k, v in freq.items() if v > 0.4 * len(samples) and len(samples) >= 60}   # 影片太短不判斷
     out = []
     for t, ls in samples:
         txt = ''.join(x[0] for x in sorted(ls, key=lambda x: x[1]) if x[0] not in static)
@@ -200,6 +216,43 @@ def cmd_extract(a):
     (out / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=1), 'utf-8')
 
 
+# ---------- 2b. 自己電腦下載好的影片（YouTube 擋雲端主機時） ----------
+def cmd_local(a):
+    """使用者電腦用 download_jcz.bat 下載的影片（videos/<id>.mp4 ＋ titles.tsv）→ 抽骨架＋OCR 字幕，格式同 extract。"""
+    titles = {}
+    if a.titles and Path(a.titles).exists():
+        for line in Path(a.titles).read_text('utf-8', errors='ignore').splitlines():
+            p = line.split('\t')
+            if len(p) >= 3:
+                titles[p[0]] = p[2]
+    out = Path(a.out); (out / 'raw').mkdir(parents=True, exist_ok=True)
+    report = []
+    for f in map(Path, a.files):
+        vid = re.sub(r'[^\w-]', '_', f.stem)
+        title = titles.get(f.stem, f.stem)
+        if (out / 'raw' / f'{vid}.json').exists():
+            continue
+        try:
+            print(f'{title}：OCR 讀畫面字幕…', flush=True)
+            subs = ocr_subs(f)
+            print(f'  字幕 {len(subs)} 句，抽骨架…', flush=True)
+            frames = ingest.extract(f, progress=False)
+            raw = {'v': 1, 'videoId': vid, 'title': title, 'url': f'https://www.youtube.com/watch?v={f.stem}', 'cat': a.cat,
+                   'fps': ingest.FPS, 'frames': len(frames), 'P': ingest.P, 'created': ingest.now(), 'data': ingest.encode(frames)}
+            if ingest.extract.aspect:
+                raw['aspect'] = ingest.extract.aspect
+            if subs:
+                raw['subs'] = subs; raw['subLang'] = 'ocr'
+            (out / 'raw' / f'{vid}.json').write_text(json.dumps(raw, ensure_ascii=False), 'utf-8')
+            report.append({'id': vid, 'title': title, 'ok': True, 'frames': len(frames), 'subs': len(subs), 'subLang': 'ocr' if subs else None})
+        except Exception as ex:
+            print(f'  失敗：{ex}', flush=True)
+            report.append({'id': vid, 'title': title, 'ok': False, 'error': str(ex)[:300]})
+        rp = out / 'report.json'
+        old = json.loads(rp.read_text('utf-8')) if rp.exists() else []
+        rp.write_text(json.dumps(old + report[-1:], ensure_ascii=False, indent=1), 'utf-8')
+
+
 # ---------- 3. 合併 ----------
 def cmd_merge(a):
     ix = ingest.load_index()
@@ -237,9 +290,11 @@ def main():
     p.add_argument('--redo', action='store_true'); p.add_argument('--redo-nosubs', action='store_true'); p.add_argument('--oldest-first', action='store_true')
     p = sp.add_parser('extract'); p.add_argument('--list', required=True); p.add_argument('--shard', type=int, default=0)
     p.add_argument('--of', type=int, default=1); p.add_argument('--cat', default='church', choices=ingest.CATS); p.add_argument('--out', required=True)
+    p = sp.add_parser('local'); p.add_argument('files', nargs='+'); p.add_argument('--titles'); p.add_argument('--out', required=True)
+    p.add_argument('--cat', default='church', choices=ingest.CATS)
     p = sp.add_parser('merge'); p.add_argument('dirs', nargs='+')
     a = ap.parse_args()
-    {'list': cmd_list, 'extract': cmd_extract, 'merge': cmd_merge}[a.cmd](a)
+    {'list': cmd_list, 'extract': cmd_extract, 'local': cmd_local, 'merge': cmd_merge}[a.cmd](a)
 
 
 if __name__ == '__main__':

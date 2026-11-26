@@ -27,6 +27,10 @@ def add(st, body):
             else:
                 st['logs'] += 1
             continue
+        if s.get('kind') == 'label':   # 召會語料確認（v0.20）
+            t = st.setdefault('church', {}).setdefault(s['term'], {'ok': 0, 'no': 0})
+            t['ok' if s.get('ok') else 'no'] += 1
+            continue
         if not s.get('word'):
             continue
         n += 1; st['samples'] += 1

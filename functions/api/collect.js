@@ -34,6 +34,10 @@ export function addStats(st, body) {
       } else st.logs++;
       continue;
     }
+    if (s.kind === 'label') {   // 召會語料確認：{詞: {ok, no}}
+      const c = st.church || (st.church = {}), t = c[s.term] || (c[s.term] = { ok: 0, no: 0 });
+      t[s.ok ? 'ok' : 'no']++; continue;
+    }
     if (!s.word) continue;
     n++; st.samples++;
     const w = st.words[s.word] || (st.words[s.word] = { n: 0, s: {} });
@@ -99,8 +103,12 @@ export async function onRequest({ request, env }) {
   const samples = Array.isArray(b.samples) ? b.samples.slice(0, MAX_SAMPLES) : [];
   // 一般樣本（收集／改正）：骨架 data；辨識紀錄（kind: 'log'）：只有 log 物件（詞、距離）
   const isLog = s => s && s.kind === 'log' && s.log && typeof s.log === 'object' && JSON.stringify(s.log).length <= 20000;
+  // 召會語料確認（v0.20）：{kind: 'label', term, id, ok, a, b}（tools/church_align.py accept 收進語料庫）
+  const isLabel = s => s && s.kind === 'label' && okStr(s.term, 20) && okStr(s.id, 60) && Number.isInteger(s.a) && Number.isInteger(s.b) && s.b > s.a;
   const isSmp = s => s && okStr(s.word, 40) && okStr(s.data, 400000) && Number.isInteger(s.frames) && s.frames > 0 && s.frames <= 600;
-  const clean = samples.filter(s => isLog(s) || isSmp(s)).map(s => isLog(s)
+  const clean = samples.filter(s => isLog(s) || isLabel(s) || isSmp(s)).map(s => isLabel(s)
+    ? { kind: 'label', term: s.term, id: s.id, ok: !!s.ok, a: s.a, b: s.b }
+    : isLog(s)
     ? { id: String(s.id || '').slice(0, 40), kind: 'log', created: String(s.created || '').slice(0, 30), log: s.log }
     : { id: String(s.id || '').slice(0, 40), word: s.word, kind: ['word', 'sent', 'none'].includes(s.kind) ? s.kind : 'word', cat: s.cat === 'church' ? 'church' : 'general',
       src: s.src === 'correct' ? 'correct' : 'collect', was: s.src === 'correct' ? String(s.was || '').slice(0, 40) : undefined,
@@ -112,8 +120,8 @@ export async function onRequest({ request, env }) {
   const body = { v: 1, signer, hand: b.hand === 'left' ? 'left' : 'right', uploaded: now.toISOString(), ua: (request.headers.get('user-agent') || '').slice(0, 160), samples: clean };
   try {
     await ensureBranch(env);
-    const words = [...new Set(clean.filter(s => s.word).map(s => s.word))], nLog = clean.filter(s => s.kind === 'log').length;
-    const message = `[CF-Pages-Skip] 收集：${signer} ${clean.length - nLog} 筆骨架${nLog ? `、${nLog} 句辨識紀錄` : ''}（${words.slice(0, 5).join('、')}${words.length > 5 ? ' 等' : ''}）`;
+    const words = [...new Set(clean.filter(s => s.word || s.term).map(s => s.word || s.term))], nLog = clean.filter(s => s.kind === 'log').length, nLab = clean.filter(s => s.kind === 'label').length;
+    const message = `[CF-Pages-Skip] 收集：${signer} ${clean.length - nLog - nLab} 筆骨架${nLog ? `、${nLog} 句辨識紀錄` : ''}${nLab ? `、${nLab} 筆召會語料確認` : ''}（${words.slice(0, 5).join('、')}${words.length > 5 ? ' 等' : ''}）`;
     await commitBatch(env, path, body, message);
     return json({ ok: true, path, n: clean.length });
   } catch (e) { return json({ error: String(e.message || e) }, 502); }
