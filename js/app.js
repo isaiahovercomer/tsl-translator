@@ -4,7 +4,7 @@ import { AvatarPlayer, normalizeSeq, drawAvatar } from './avatar.js';
 import { Camera, extractFromFile, drawOverlay } from './vision.js';
 import * as store from './store.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.1.1';
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms = 2600) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), ms); }
@@ -23,7 +23,7 @@ function route() {
   document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', a.dataset.v === name));
   if (name !== 'add') stopRec();
 }
-addEventListener('hashchange', route); route();
+addEventListener('hashchange', route);
 
 // ---------- 語料 ----------
 let samples = [], index = { signs: [], raw: [] };
@@ -399,5 +399,6 @@ $('verInfo').textContent = '版本 ' + VERSION;
 // ---------- PWA ----------
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
+route();
 loadCorpus();
 window.__tsl = { recog, store, get samples() { return samples; }, playText, loadCorpus, openEditor };
