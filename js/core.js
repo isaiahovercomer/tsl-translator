@@ -75,10 +75,14 @@ function unb64(s) {
   for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u;
 }
 
+// 語料分類：一般生活用語、召會生活用語
+export const CATS = { general: '一般生活用語', church: '召會生活用語' };
+export const catOf = s => (s && CATS[s.cat]) ? s.cat : 'general';
+
 // 一筆語料（sample）
 export function makeSample(word, frames, src, extra = {}) {
   return { v: 1, id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    word: word.trim(), fps: FPS, frames: frames.length, P, src, created: new Date().toISOString(),
+    word: word.trim(), cat: 'general', fps: FPS, frames: frames.length, P, src, created: new Date().toISOString(),
     data: encodeFrames(frames), ...extra };
 }
 export const sampleFrames = s => s._frames || (s._frames = decodeFrames(s.data, s.frames));

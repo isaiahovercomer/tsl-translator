@@ -147,11 +147,19 @@ def save_index(ix):
     (CORPUS / 'index.json').write_text(json.dumps(ix, ensure_ascii=False, indent=1), 'utf-8')
 
 
-def add_sign(ix, word, frames, src, t=None, sid=None, created=None, aspect=None):
+CATS = ('general', 'church')   # 一般生活用語、召會生活用語
+
+
+def cat_of(x):
+    return x if x in CATS else 'general'
+
+
+def add_sign(ix, word, frames, src, t=None, sid=None, created=None, aspect=None, cat='general'):
+    cat = cat_of(cat)
     word = word.strip()
     if not word or len(frames) < 4:
         return None
-    s = {'v': 1, 'id': sid or new_id(), 'word': word, 'fps': FPS, 'frames': len(frames), 'P': P, 'src': src,
+    s = {'v': 1, 'id': sid or new_id(), 'word': word, 'cat': cat, 'fps': FPS, 'frames': len(frames), 'P': P, 'src': src,
          'created': created or now(), 'data': encode(frames)}
     if t:
         s['t'] = t
@@ -159,9 +167,9 @@ def add_sign(ix, word, frames, src, t=None, sid=None, created=None, aspect=None)
         s['aspect'] = aspect
     if any(e['id'] == s['id'] for e in ix['signs']):
         return None
-    (CORPUS / 'signs').mkdir(parents=True, exist_ok=True)
-    (CORPUS / 'signs' / f"{s['id']}.json").write_text(json.dumps(s, ensure_ascii=False), 'utf-8')
-    ix['signs'].append({'id': s['id'], 'word': word, 'file': f"signs/{s['id']}.json", 'src': src})
+    (CORPUS / 'signs' / cat).mkdir(parents=True, exist_ok=True)
+    (CORPUS / 'signs' / cat / f"{s['id']}.json").write_text(json.dumps(s, ensure_ascii=False), 'utf-8')
+    ix['signs'].append({'id': s['id'], 'word': word, 'cat': cat, 'file': f"signs/{cat}/{s['id']}.json", 'src': src})
     return s
 
 
@@ -182,27 +190,27 @@ def parse_segments(lines):
     return out
 
 
-def ingest_frames(frames, vid, title, url, segs, aspect=None):
-    ix = load_index()
-    (CORPUS / 'raw').mkdir(parents=True, exist_ok=True)
-    raw = {'v': 1, 'videoId': vid, 'title': title, 'url': url, 'fps': FPS, 'frames': len(frames), 'P': P,
+def ingest_frames(frames, vid, title, url, segs, aspect=None, cat='general'):
+    ix = load_index(); cat = cat_of(cat)
+    (CORPUS / 'raw' / cat).mkdir(parents=True, exist_ok=True)
+    raw = {'v': 1, 'videoId': vid, 'title': title, 'url': url, 'cat': cat, 'fps': FPS, 'frames': len(frames), 'P': P,
            'created': now(), 'data': encode(frames)}
     if aspect:
         raw['aspect'] = aspect
-    (CORPUS / 'raw' / f'{vid}.json').write_text(json.dumps(raw, ensure_ascii=False), 'utf-8')
+    (CORPUS / 'raw' / cat / f'{vid}.json').write_text(json.dumps(raw, ensure_ascii=False), 'utf-8')
     ix['raw'] = [r for r in ix['raw'] if r['id'] != vid]
     added = []
     for a, b, word in segs:
-        s = add_sign(ix, word, frames[int(a * FPS):int(b * FPS) + 1], f'youtube:{vid}', [a, b], aspect=aspect)
+        s = add_sign(ix, word, frames[int(a * FPS):int(b * FPS) + 1], f'youtube:{vid}', [a, b], aspect=aspect, cat=cat)
         if s:
             added.append(word)
-    ix['raw'].append({'id': vid, 'title': title, 'url': url, 'file': f'raw/{vid}.json', 'frames': len(frames),
+    ix['raw'].append({'id': vid, 'title': title, 'url': url, 'cat': cat, 'file': f'raw/{cat}/{vid}.json', 'frames': len(frames),
                       'labeled': sum(1 for e in ix['signs'] if e['src'] == f'youtube:{vid}')})
     save_index(ix)
     return f'「{title}」{len(frames) / FPS:.0f} 秒骨架已存入待標註清單' + (f'；已加入 {len(added)} 個詞：{"、".join(added)}' if added else '')
 
 
-def from_url(url, segs):
+def from_url(url, segs, cat='general'):
     import yt_dlp
     with tempfile.TemporaryDirectory() as tmp:
         opts = {'format': 'bv*[height<=720][ext=mp4]/bv*[height<=720]/b[height<=720]/bv*/b', 'outtmpl': f'{tmp}/%(id)s.%(ext)s',
@@ -215,13 +223,13 @@ def from_url(url, segs):
         print(f"下載完成：{info.get('title')}，開始抽骨架…", flush=True)
         frames = extract(path)
     # 離開 with 區塊時暫存影片已刪除
-    return ingest_frames(frames, re.sub(r'[^\w-]', '_', info['id']), info.get('title') or url, url, segs, extract.aspect)
+    return ingest_frames(frames, re.sub(r'[^\w-]', '_', info['id']), info.get('title') or url, url, segs, extract.aspect, cat)
 
 
-def from_file(path, segs):
+def from_file(path, segs, cat='general'):
     frames = extract(path)
     vid = re.sub(r'[^\w-]', '_', Path(path).stem)[:40]
-    return ingest_frames(frames, vid, Path(path).name, '', segs, extract.aspect)
+    return ingest_frames(frames, vid, Path(path).name, '', segs, extract.aspect, cat)
 
 
 def from_pack(path_or_obj):
@@ -236,7 +244,7 @@ def from_pack(path_or_obj):
             sid = re.sub(r'[^\w]', '', str(s.get('id') or ''))[:40] or None
             asp = s.get('aspect')
             asp = round(float(asp), 3) if isinstance(asp, (int, float)) and 0.2 < asp < 5 else None
-            r = add_sign(ix, str(s['word'])[:30], fr, str(s.get('src') or 'upload')[:60], s.get('t'), sid, s.get('created'), asp)
+            r = add_sign(ix, str(s['word'])[:30], fr, str(s.get('src') or 'upload')[:60], s.get('t'), sid, s.get('created'), asp, cat_of(s.get('cat')))
             if r:
                 added.append(r['word'])
         except Exception as e:  # 壞掉的樣本略過
@@ -255,7 +263,8 @@ def from_issue():
         if not m:
             return '找不到網址'
         segs = parse_segments(body.split('segments:', 1)[1].split('```')[0].splitlines()) if 'segments:' in body else []
-        return from_url(m.group(1), segs)
+        c = re.search(r'category:\s*(\w+)', body)
+        return from_url(m.group(1), segs, cat_of(c.group(1) if c else 'general'))
     if title.startswith('[語料]'):
         links = re.findall(r'https://github\.com/[^\s)\]]+/files/[^\s)\]]+', body)
         if not links:
@@ -274,10 +283,11 @@ def main():
     ap.add_argument('cmd', choices=['url', 'file', 'pack', 'issue'])
     ap.add_argument('target', nargs='?')
     ap.add_argument('--seg', action='append', default=[], help='"0:12-0:14 謝謝"')
+    ap.add_argument('--cat', default='general', choices=['general', 'church'], help='一般生活用語 general／召會生活用語 church')
     a = ap.parse_args()
     try:
         segs = parse_segments(a.seg)
-        msg = {'url': lambda: from_url(a.target, segs), 'file': lambda: from_file(a.target, segs),
+        msg = {'url': lambda: from_url(a.target, segs, a.cat), 'file': lambda: from_file(a.target, segs, a.cat),
                'pack': lambda: from_pack(a.target), 'issue': from_issue}[a.cmd]()
         ok = True
     except Exception as e:

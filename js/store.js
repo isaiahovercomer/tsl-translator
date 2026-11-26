@@ -21,7 +21,8 @@ export const localAll = () => tx('readonly', st => st.getAll()).catch(() => []);
 export const localPut = s => tx('readwrite', st => st.put(clean(s)));
 export const localDel = id => tx('readwrite', st => st.delete(id));
 
-// 共用語料庫：corpus/index.json = { signs:[{id,word,file,src}], raw:[{id,title,url,file,frames}] }
+// 共用語料庫：corpus/index.json = { signs:[{id,word,cat,file,src}], raw:[{id,title,url,cat,file,frames}] }
+// 檔案依分類分資料夾：corpus/signs/general/、corpus/signs/church/（raw 同理）
 export async function sharedIndex() {
   try { const r = await fetch('corpus/index.json', { cache: 'no-cache' }); return r.ok ? await r.json() : { signs: [], raw: [] }; }
   catch { return { signs: [], raw: [] }; }
@@ -29,7 +30,7 @@ export async function sharedIndex() {
 export async function sharedSamples(index) {
   const out = [];
   await Promise.all((index.signs || []).map(async e => {
-    try { const r = await fetch('corpus/' + e.file); if (r.ok) out.push({ ...(await r.json()), shared: true }); } catch {}
+    try { const r = await fetch('corpus/' + e.file); if (r.ok) { const s = await r.json(); out.push({ ...s, cat: s.cat || e.cat || 'general', shared: true }); } } catch {}
   }));
   return out;
 }

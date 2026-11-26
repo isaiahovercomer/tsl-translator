@@ -27,6 +27,8 @@ section.view{display:none}section.view.on{display:block}
 .card h2{font-size:16px;margin:0 0 8px;display:flex;align-items:center;gap:6px}
 .talk{display:grid;gap:12px;grid-template-columns:1fr}
 @media (min-width:860px) and (orientation:landscape){.talk{grid-template-columns:1fr 1fr}}
+.catbar{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.tag.church{background:#7a4f9e;color:#fff}
 .stage{position:relative;background:#efe8da;border-radius:12px;overflow:hidden;aspect-ratio:4/3}
 .stage canvas,.stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .stage video.mirror,.stage canvas.mirror{transform:scaleX(-1)}
@@ -127,6 +129,7 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
     <h2>📚 語料庫</h2>
     <div class="muted" id="corpusStats">載入中…</div>
     <div class="row">
+      <select id="corpusCat"><option value="">全部分類</option><option value="general">一般生活用語</option><option value="church">召會生活用語</option></select>
       <input type="search" id="corpusSearch" class="grow" placeholder="搜尋詞彙">
     </div>
     <div class="wordlist" id="wordList"></div>
@@ -151,17 +154,23 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
 
 <!-- 新增語料 -->
 <section class="view" id="v-add">
+  <div class="card catbar">
+    <label>這次新增的語料分類：
+      <select id="addCat"><option value="general">一般生活用語</option><option value="church">召會生活用語</option></select>
+    </label>
+    <span class="muted">鏡頭錄製、上傳影片、網址匯入都會存到這個分類（切段時也可以個別改）。</span>
+  </div>
   <div class="grid2">
     <div class="card">
       <h2>📷 用鏡頭錄一個詞</h2>
-      <div class="row"><input type="text" id="recWord" class="grow" placeholder="這個手語的中文意思，例如：謝謝"></div>
+      <div class="row"><input type="text" id="recWord" class="grow" placeholder="這個手語的中文意思，例如：謝謝"><button id="btnDict" title="在中正大學台灣手語線上辭典查這個詞怎麼比">📖 查辭典</button></div>
       <div class="stage" style="margin-top:8px"><video id="recVideo" class="mirror" playsinline muted></video><canvas id="recOverlay" class="mirror"></canvas>
         <div class="count" id="recCount"></div><div class="hint" id="recHint">按「開始錄」，倒數 3 秒後比一次；手放下會自動停止</div></div>
       <div class="row">
         <button class="rec" id="btnRec">● 開始錄</button>
         <button id="btnRecStop" disabled>■ 停止</button>
       </div>
-      <p class="muted">每個詞建議錄 5 次以上、請不同的人錄，辨識會更準。只存骨架點，不存影像。</p>
+      <p class="muted">每個詞建議錄 5 次以上、請不同的人錄，辨識會更準。只存骨架點，不存影像。不確定怎麼比，先按「📖 查辭典」看<a href="https://twtsl.ccu.edu.tw/" target="_blank" rel="noopener">台灣手語線上辭典</a>（中正大學，4600 詞），再照著錄。</p>
     </div>
     <div class="card">
       <h2>🎞️ 上傳影片檔</h2>
@@ -198,7 +207,8 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
           <button id="edPlay">▶ 播放這段</button>
         </div>
         <div class="row muted">選取：<span id="edRange">—</span></div>
-        <div class="row"><input type="text" id="edWord" class="grow" placeholder="這段手語的中文意思"><button class="primary" id="edAdd">＋ 加入語料</button></div>
+        <div class="row"><select id="edCat"><option value="general">一般生活用語</option><option value="church">召會生活用語</option></select>
+          <input type="text" id="edWord" class="grow" placeholder="這段手語的中文意思"><button class="primary" id="edAdd">＋ 加入語料</button></div>
         <div class="row"><button id="edAuto">✂ 自動切段</button><button id="edClose">關閉</button></div>
         <div class="segs" id="edSegs"></div>
       </div>
@@ -220,6 +230,8 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
         <option value="2d">2D 簡筆人像（最省電）</option>
       </select></label></div>
       <input type="url" id="avatarUrl" placeholder="https://…/avatar.glb" hidden>
+      <div class="row"><label class="grow">同一個詞有兩種分類時，優先用：<select id="prefCat" style="width:100%">
+        <option value="church">召會生活用語</option><option value="general">一般生活用語</option></select></label></div>
       <label>手語人像速度：<b id="spVal"></b><input type="range" id="avatarSpeed" min="0.5" max="1.6" step="0.05"></label>
       <div class="row"><label class="grow">中文語音：<select id="voice" style="width:100%"></select></label></div>
       <label>語速：<b id="rtVal"></b><input type="range" id="rate" min="0.6" max="1.5" step="0.05"></label>

@@ -1,16 +1,17 @@
 // app.js — 介面與流程
-import { FPS, Recognizer, Segmenter, tokenize, makeSample, sampleFrames, sampleAspect, estimateAspect, decodeFrames, handsActive as handsUp } from './core.js';
+import { FPS, CATS, catOf, Recognizer, Segmenter, tokenize, makeSample, sampleFrames, sampleAspect, estimateAspect, decodeFrames, handsActive as handsUp } from './core.js';
 import { AvatarPlayer, normalizeSeq, drawAvatar } from './avatar.js';
 import { Camera, extractFromFile, drawOverlay } from './vision.js';
 import * as store from './store.js';
 
 const VERSION = '0.2.0';
 const $ = id => document.getElementById(id);
+const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms = 2600) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), ms); }
 
 // ---------- 設定 ----------
-const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝', avatarKind: 'female', avatarUrl: '' };
+const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝', avatarKind: 'female', avatarUrl: '', prefCat: 'church', addCat: 'general' };
 let S = { ...DEF };
 try { S = { ...DEF, ...JSON.parse(localStorage.getItem('tsl-settings') || '{}') }; } catch {}
 const aliasMap = () => Object.fromEntries(S.aliases.split('\n').map(l => l.split('=').map(x => x.trim())).filter(a => a.length === 2 && a[0] && a[1]));
@@ -61,9 +62,12 @@ let lastTokens = [];
 function playText(text) {
   const toks = tokenize(text, [...byWord.keys()], aliasMap());
   lastTokens = toks;
-  $('speechChips').innerHTML = toks.map((t, i) => `<span class="chip ${t.known ? 'known' : ''}" data-i="${i}">${esc(t.text)}${t.known && t.word !== t.text ? `<small>${esc(t.word)}</small>` : ''}</span>`).join('');
+  $('speechChips').innerHTML = toks.map((t, i) => t.known
+    ? `<span class="chip known" data-i="${i}">${esc(t.text)}${t.word !== t.text ? `<small>${esc(t.word)}</small>` : ''}</span>`
+    : `<a class="chip" data-i="${i}" href="${dictUrl(t.text)}" target="_blank" rel="noopener" title="語料庫還沒有，點一下查台灣手語線上辭典">${esc(t.text)}</a>`).join('');
   const items = toks.filter(t => t.known).map(t => {
-    const list = byWord.get(t.word); const s = list[Math.floor(Math.random() * list.length)];
+    const all = byWord.get(t.word), pref = all.filter(s => catOf(s) === S.prefCat), list = pref.length ? pref : all;
+    const s = list[Math.floor(Math.random() * list.length)];
     return { word: t.word, frames: sampleFrames(s), aspect: sampleAspect(s) };
   });
   if (items.length) player.play(items);
@@ -128,7 +132,7 @@ $('signChips').onclick = e => {
   if (!pick) return;
   w.word = pick.trim();
   // 改正的結果直接存成本機語料，越用越準
-  store.localPut(makeSample(w.word, w.frames, 'correction', { aspect: vAsp($('camVideo')) })).then(loadCorpus);
+  store.localPut(makeSample(w.word, w.frames, 'correction', { aspect: vAsp($('camVideo')), cat: S.prefCat })).then(loadCorpus);
   renderSignChips();
 };
 const sentence = () => signWords.filter(w => w.word).map(w => w.word).join('');
@@ -174,20 +178,25 @@ function sizeTo(canvas, video) {
 let selWord = null;
 const preview = new AvatarPlayer($('previewCanvas'), {});
 function renderCorpus() {
-  const q = $('corpusSearch').value.trim();
+  const q = $('corpusSearch').value.trim(), cat = $('corpusCat').value;
   const local = samples.filter(s => !s.shared).length;
-  $('corpusStats').textContent = `${byWord.size} 個詞、${samples.length} 筆樣本（共用 ${samples.length - local}、本機 ${local}）`;
-  const words = [...byWord.keys()].filter(w => !q || w.includes(q)).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
-  $('wordList').innerHTML = words.map(w => `<button class="word ${w === selWord ? 'sel' : ''}" data-w="${esc(w)}"><b>${esc(w)}</b><span class="muted">${byWord.get(w).length} 筆</span></button>`).join('')
+  const nCat = c => new Set(samples.filter(s => catOf(s) === c).map(s => s.word)).size;
+  $('corpusStats').textContent = `${byWord.size} 個詞、${samples.length} 筆樣本（共用 ${samples.length - local}、本機 ${local}）・一般生活用語 ${nCat('general')} 詞、召會生活用語 ${nCat('church')} 詞`;
+  const inCat = w => !cat || byWord.get(w).some(s => catOf(s) === cat);
+  const words = [...byWord.keys()].filter(w => (!q || w.includes(q)) && inCat(w)).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+  const isChurch = w => byWord.get(w).some(s => catOf(s) === 'church');
+  $('wordList').innerHTML = words.map(w => `<button class="word ${w === selWord ? 'sel' : ''}" data-w="${esc(w)}"><b>${esc(w)}</b><span class="muted">${isChurch(w) ? '⛪ ' : ''}${byWord.get(w).length} 筆</span></button>`).join('')
     || '<span class="muted">還沒有語料。到「新增語料」開始建立。</span>';
   renderSamples();
 }
 $('corpusSearch').oninput = renderCorpus;
+$('corpusCat').onchange = renderCorpus;
 $('wordList').onclick = e => { const b = e.target.closest('.word'); if (!b) return; selWord = b.dataset.w; renderCorpus(); playSample(byWord.get(selWord)[0]); };
 function renderSamples() {
   const list = selWord && byWord.get(selWord);
-  $('wordTitle').textContent = list ? `「${selWord}」` : '選一個詞預覽';
+  $('wordTitle').innerHTML = list ? `「${esc(selWord)}」 <a class="muted" style="font-size:14px" href="${dictUrl(selWord)}" target="_blank" rel="noopener">📖 對照辭典</a>` : '選一個詞預覽';
   $('sampleList').innerHTML = list ? list.map((s, i) => `<div><span class="tag ${s.shared ? '' : 'local'}">${s.shared ? '共用' : '本機'}</span>
+    ${s.shared ? `<span class="tag ${catOf(s)}">${CATS[catOf(s)]}</span>` : `<button class="tag ${catOf(s)}" data-cat="${i}" title="點一下切換分類">${CATS[catOf(s)]}</button>`}
     <span class="grow">${(s.frames / (s.fps || FPS)).toFixed(1)} 秒・${esc(srcLabel(s.src))}</span>
     <button data-play="${i}">▶</button>${s.shared ? '' : `<button data-del="${i}">刪除</button>`}</div>`).join('') : '';
 }
@@ -195,6 +204,10 @@ const srcLabel = s => !s ? '' : s.startsWith('youtube') ? 'YouTube' : s === 'cam
 $('sampleList').onclick = async e => {
   const list = byWord.get(selWord); if (!list) return;
   if (e.target.dataset.play) playSample(list[e.target.dataset.play]);
+  if (e.target.dataset.cat) {
+    const s = list[e.target.dataset.cat]; s.cat = catOf(s) === 'church' ? 'general' : 'church';
+    await store.localPut(s); toast('已改成' + CATS[s.cat]); renderCorpus(); return;
+  }
   if (e.target.dataset.del) { await store.localDel(list[e.target.dataset.del].id); toast('已刪除'); await loadCorpus(); }
 };
 function playSample(s) { preview.play([{ word: s.word, frames: sampleFrames(s), aspect: sampleAspect(s) }], false); }
@@ -213,9 +226,10 @@ $('btnShare').onclick = async () => {
   const local = await store.localAll();
   if (!local.length) return toast('本機沒有語料可以上傳');
   const words = [...new Set(local.map(s => s.word))];
+  const nc = local.filter(s => catOf(s) === 'church').length;
   const name = `台灣手語語料-${Date.now()}.json`;
   store.download(name, store.packFile(local));
-  const body = `請把剛剛下載的檔案「${name}」拖到這個框框裡，再按 Submit。\n\n內容：${local.length} 筆，詞彙：${words.slice(0, 40).join('、')}`;
+  const body = `請把剛剛下載的檔案「${name}」拖到這個框框裡，再按 Submit。\n\n內容：${local.length} 筆（一般生活用語 ${local.length - nc}、召會生活用語 ${nc}），詞彙：${words.slice(0, 40).join('、')}`;
   window.open(store.issueUrl(`[語料] ${words.slice(0, 5).join('、')}${words.length > 5 ? ' 等' : ''}（${local.length} 筆）`, body, 'corpus'), '_blank');
 };
 
@@ -253,6 +267,7 @@ function stopRec() {
   const c = $('recOverlay'); c.getContext('2d').clearRect(0, 0, c.width, c.height);
 }
 $('btnRec').onclick = startRec;
+$('btnDict').onclick = () => { const w = $('recWord').value.trim(); window.open(w ? dictUrl(w) : 'https://twtsl.ccu.edu.tw/', '_blank'); };
 $('btnRecStop').onclick = () => recState === 'rec' ? finishRec() : stopRec();
 
 // ---------- 新增語料：上傳影片 ----------
@@ -310,27 +325,28 @@ $('btnUrl').onclick = () => {
   const url = $('importUrl').value.trim();
   if (!/^https?:\/\//.test(url)) return toast('請貼上完整網址');
   const segs = $('importSegs').value.trim();
-  const body = ['```', `url: ${url}`, 'segments:', ...segs.split('\n').filter(Boolean).map(l => '  ' + l.trim()), '```',
+  const body = ['```', `url: ${url}`, `category: ${$('addCat').value}`, 'segments:', ...segs.split('\n').filter(Boolean).map(l => '  ' + l.trim()), '```',
     '', '送出後雲端會自動下載影片、抽出骨架、刪除影片，完成後會在這裡留言。'].join('\n');
   window.open(store.issueUrl(`[匯入] ${url}`, body, 'ingest'), '_blank');
   toast('請在 GitHub 頁面按 Submit 送出');
 };
 function renderRaw() {
   const raw = index.raw || [];
-  $('rawList').innerHTML = raw.length ? raw.map((r, i) => `<div><span class="grow">${esc(r.title || r.url)}<br><span class="muted">${(r.frames / FPS).toFixed(0)} 秒・已標 ${r.labeled || 0} 段</span></span><button data-raw="${i}">開啟切段</button></div>`).join('')
+  $('rawList').innerHTML = raw.length ? raw.map((r, i) => `<div><span class="tag ${catOf(r)}">${CATS[catOf(r)]}</span><span class="grow">${esc(r.title || r.url)}<br><span class="muted">${(r.frames / FPS).toFixed(0)} 秒・已標 ${r.labeled || 0} 段</span></span><button data-raw="${i}">開啟切段</button></div>`).join('')
     : '<span class="muted">還沒有。貼 YouTube 網址送出後，會出現在這裡。</span>';
 }
 $('rawList').onclick = async e => {
   const i = e.target.dataset.raw; if (i === undefined) return;
   const entry = index.raw[i];
-  try { const t = await store.rawTrack(entry); openEditor(decodeFrames(t.data, t.frames), 'youtube:' + (t.videoId || entry.id), '', entry.title || entry.url, t.aspect); }
+  try { const t = await store.rawTrack(entry); openEditor(decodeFrames(t.data, t.frames), 'youtube:' + (t.videoId || entry.id), '', entry.title || entry.url, t.aspect, t.cat || entry.cat); }
   catch (err) { toast(err.message); }
 };
 
 // ---------- 切段編輯器 ----------
 let ed = null;
-function openEditor(frames, src, word, title, aspect) {
+function openEditor(frames, src, word, title, aspect, cat) {
   aspect = aspect || estimateAspect(frames);
+  $('edCat').value = CATS[cat] ? cat : $('addCat').value;
   ed = { frames, aspect, norm: normalizeSeq(frames, aspect), src, a: 0, b: frames.length - 1, pos: 0, playing: 0 };
   $('editor').hidden = false; $('edTitle').textContent = '切段與標註：' + title;
   $('edWord').value = word || ''; $('edPos').max = frames.length - 1; $('edPos').value = 0;
@@ -367,7 +383,7 @@ $('edClose').onclick = () => { $('editor').hidden = true; ed = null; };
 $('edAdd').onclick = async () => {
   const w = $('edWord').value.trim(); if (!w) return toast('請輸入這段的中文意思');
   if (ed.b - ed.a < 5) return toast('選取太短');
-  await store.localPut(makeSample(w, ed.frames.slice(ed.a, ed.b + 1), ed.src, { t: [ed.a / FPS, ed.b / FPS], aspect: ed.aspect }));
+  await store.localPut(makeSample(w, ed.frames.slice(ed.a, ed.b + 1), ed.src, { t: [ed.a / FPS, ed.b / FPS], aspect: ed.aspect, cat: $('edCat').value }));
   toast(`已加入「${w}」`); $('edWord').value = ''; await loadCorpus();
 };
 function autoSegments() {
@@ -388,7 +404,7 @@ $('edSegs').onclick = async e => {
   if (e.target.dataset.go) { ed.a = a; ed.b = b; ed.pos = a; $('edPos').value = a; edRange(); $('edPlay').click(); }
   if (e.target.dataset.add) {
     const w = row.querySelector('input').value.trim(); if (!w) return toast('請輸入中文意思');
-    await store.localPut(makeSample(w, ed.frames.slice(a, b + 1), ed.src, { t: [a / FPS, b / FPS], aspect: ed.aspect }));
+    await store.localPut(makeSample(w, ed.frames.slice(a, b + 1), ed.src, { t: [a / FPS, b / FPS], aspect: ed.aspect, cat: $('edCat').value }));
     row.style.opacity = .5; e.target.disabled = true; toast(`已加入「${w}」`); await loadCorpus();
   }
 };
@@ -399,6 +415,7 @@ function fillSettings() {
   $('avatarSpeed').value = S.avatarSpeed; $('spVal').textContent = S.avatarSpeed + '×';
   $('rate').value = S.rate; $('rtVal').textContent = S.rate + '×'; $('aliases').value = S.aliases;
   if (!AVATAR_URLS[S.avatarKind] && !['2d', 'custom'].includes(S.avatarKind)) S.avatarKind = 'female';
+  $('prefCat').value = S.prefCat; $('addCat').value = S.addCat;
   $('avatarKind').value = S.avatarKind; $('avatarUrl').value = S.avatarUrl; $('avatarUrl').hidden = S.avatarKind !== 'custom';
   const vs = ('speechSynthesis' in window) ? speechSynthesis.getVoices().filter(v => /zh/i.test(v.lang)) : [];
   $('voice').innerHTML = '<option value="">自動（台灣華語優先）</option>' + vs.map(v => `<option value="${esc(v.voiceURI)}" ${v.voiceURI === S.voice ? 'selected' : ''}>${esc(v.name)}（${esc(v.lang)}）</option>`).join('');
@@ -407,13 +424,14 @@ for (const [id, out, suf] of [['threshold', 'thVal', ''], ['avatarSpeed', 'spVal
 $('saveSettings').onclick = () => {
   const old = S.avatarKind + S.avatarUrl;
   S = { threshold: +$('threshold').value, avatarSpeed: +$('avatarSpeed').value, voice: $('voice').value, rate: +$('rate').value, aliases: $('aliases').value,
-    avatarKind: $('avatarKind').value, avatarUrl: $('avatarUrl').value.trim() };
+    avatarKind: $('avatarKind').value, avatarUrl: $('avatarUrl').value.trim(), prefCat: $('prefCat').value, addCat: $('addCat').value };
   try { localStorage.setItem('tsl-settings', JSON.stringify(S)); } catch {}
   player.speed = S.avatarSpeed; toast('已儲存');
   if (S.avatarKind + S.avatarUrl !== old) applyAvatar();
 };
 if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = fillSettings;
 fillSettings();
+$('addCat').onchange = e => { S.addCat = e.target.value; try { localStorage.setItem('tsl-settings', JSON.stringify(S)); } catch {} };
 $('avatarKind').onchange = e => { $('avatarUrl').hidden = e.target.value !== 'custom'; };
 $('verInfo').textContent = '版本 ' + VERSION;
 
