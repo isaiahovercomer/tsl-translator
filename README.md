@@ -4,7 +4,7 @@
 
 聽人和聾人面對面坐著，一個畫面雙向翻譯，以**台灣手語（自然手語）**為主：
 
-- **聽人說話 → 手語人像**：瀏覽器語音辨識（zh-TW）→ 用語料庫的詞做最長比對 → 把每個詞的骨架動作接起來，由 3D 寫實人像即時比出來（手臂、手掌方向、每根手指、臉部表情）。
+- **聽人說話 → 手語人像**：瀏覽器語音辨識（zh-TW）→ AI 改成台灣手語詞序（Workers AI，離線時用規則）→ 用語料庫的詞做最長比對 → 把每個詞的骨架動作接起來，由 3D 寫實人像即時比出來（手臂、手掌方向、每根手指、臉部表情）。
 - **聾人比手語 → 台灣中文語音**：鏡頭 → MediaPipe Holistic 抓骨架 → 手舉起／放下自動切詞 → DTW 比對語料庫 → 停下來後用 zh-TW 語音唸出整句。
 
 ## 語料：只存骨架，不存影片
@@ -16,6 +16,7 @@
 | 上傳影片檔 | 裝置上（影片讀完就丟） |
 | YouTube：邊播邊擷取 | 電腦版 Chrome／Edge，擷取分頁畫面即時抽骨架 |
 | YouTube：送雲端 | GitHub Actions（`tools/ingest.py`），需 repo secret `YT_COOKIES`，否則會被 YouTube 擋 |
+| YouTube 整個頻道 | Actions「批次匯入 YouTube 頻道」（`tools/yt_batch.py`）：影片＋字幕（沒有 CC 就 OCR 畫面字幕）→ 骨架 |
 
 共用語料只先下載清單（`corpus/index.json`），骨架用到才下載；辨識特徵預先算好放 `corpus/feats.json`（`tools/build_feats.mjs`），開鏡頭時才載入。本機語料存在 IndexedDB；「上傳到共用語料庫」會下載語料檔並開 GitHub issue（標題 `[語料]`），把檔案拖進去送出，Actions 自動寫進 `corpus/`。
 
@@ -41,6 +42,10 @@
 - `tools/ingest.py`、`.github/workflows/ingest.yml`：雲端抽骨架
 - `sw.js`、`manifest.webmanifest`：PWA
 
+## 手語詞序（v0.4.0）
+- `js/gloss.js`：從辭典 546 句例句整理的規則（時間詞前、否定／助動詞／疑問句尾、話題提前、很後置、虛詞不比）。
+- `functions/api/gloss.js`：Cloudflare Workers AI，挑最像的 16 句例句當範例改寫成 Gloss；`tools/eval_gloss.mjs` 評估（規則 85.8% → AI 89.2%）。
+
 ## 下一步
-1. 用 AI 把中文句子轉成台灣手語詞序（現在是逐詞）
+1. 江啟禎影片：字幕（OCR）↔ 手勢段落對齊，切出召會生活用語
 2. 語料多了以後，把 DTW 換成 Transformer 分類模型
