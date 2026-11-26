@@ -10,3 +10,7 @@
 | vrm-m2.vrm | 桜田 史利矢（Sakurada Fumiriya），VRoid Project | CC0 |
 
 授權說明：https://vroid.pixiv.help/hc/en-us/articles/4402614652569
+| vrm-f3.vrm | 千駄ヶ谷 渋（Sendagaya Shibu），VRoid Project | CC0 |
+| vrm-m3.vrm | HairSample_Male，VRoid Project | CC0 |
+
+網站會在載入時調色（`js/app.js` 的 `#tint=`）：vrm-f2 毛衣改深藍、vrm-m2 頭髮改深棕、vrm-m3 帽T改深藍灰；眉毛與眼線畫在瀏海前面（`avatar3d.js` 的 `clarify`）。

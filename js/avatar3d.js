@@ -74,8 +74,10 @@ export class Avatar3D {
 
   async load(url) {
     this.url = url;
-    const toon = /#toon$/.test(url); url = url.replace(/#toon$/, '');   // 網址後面加 #toon：改成插畫風（卡通著色＋描邊）
-    this.toon = toon;
+    // 網址後面的設定：#toon 改成插畫風；#tint=Tops:3a4a7a,Hair:4a3a36 依材質名稱調色（VRM）
+    const hash = (url.split('#')[1] || ''); url = url.split('#')[0];
+    const toon = hash === 'toon'; this.toon = toon;
+    const tints = Object.fromEntries((hash.match(/tint=([^&]+)/) || [, ''])[1].split(',').filter(Boolean).map(x => x.split(':')));
     let root, vrm = null;
     if (/\.vrm(\?|$)/i.test(url)) {
       // VRM：每個畫面各自載入（VRM 物件綁在場景上，不能共用複製）
@@ -97,7 +99,7 @@ export class Avatar3D {
       root = cloneSkinned(gltf.scene);
     }
     this.vrm = vrm;
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true, stencil: true });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.scene = new THREE.Scene();
@@ -106,6 +108,7 @@ export class Avatar3D {
     const fill = new THREE.DirectionalLight(0xffe8d0, 0.8); fill.position.set(-1.5, 1, 1); this.scene.add(fill);
     this.scene.add(root);
     this.root = root;
+
     if (toon) {
       // 三階明暗的卡通著色，加上黑色描邊：寫實比例的成人角色看起來像插畫
       const g = new Uint8Array([90, 170, 255]);
@@ -147,6 +150,7 @@ export class Avatar3D {
     const lx = this.b.LeftArm.getWorldPosition(_v1).x, rx = this.b.RightArm.getWorldPosition(_v2).x;
     if (lx < rx) { root.rotation.y += Math.PI; root.updateMatrixWorld(true); }
     this.headBindWorld = this.b.Head.getWorldQuaternion(new THREE.Quaternion());
+    if (vrm) this.clarify(root, tints, vrm);
 
     // 臉部表情
     this.morphs = [];
@@ -168,6 +172,54 @@ export class Avatar3D {
     this.frame = { cy: (top + bottom) / 2, h: top - bottom };
     this.camera = new THREE.PerspectiveCamera(26, 1, 0.05, 20);
     this.ready = true;
+  }
+
+  // 手語要看得清楚：眉毛、眼線畫在瀏海前面（但手擋到臉時仍被手遮住）、衣服調成跟膚色差很多的深色、描邊加粗
+  clarify(root, tints, vrm) {
+    // 瀏海修剪：臉前面、眉毛以下、兩眼外角之間的頭髮不畫（眉毛和眼睛露出來）。四個平面取交集，跟著頭轉
+    const head = this.b.Head, le = vrm.humanoid.getRawBoneNode('leftEye'), re = vrm.humanoid.getRawBoneNode('rightEye');
+    this.hairClip = null;
+    if (le && re) {
+      const eyeW = le.getWorldPosition(new THREE.Vector3()).add(re.getWorldPosition(new THREE.Vector3())).multiplyScalar(0.5);
+      const hq = head.getWorldQuaternion(new THREE.Quaternion()).invert();
+      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(hq), fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(hq), side = new THREE.Vector3(1, 0, 0).applyQuaternion(hq);
+      const eye = head.worldToLocal(eyeW.clone());
+      const at = (n, p) => new THREE.Plane().setFromNormalAndCoplanarPoint(n, p);
+      const local = [
+        at(up, eye.clone().addScaledVector(up, 0.038)),                       // 眉毛上緣以下
+        at(fwd.clone().negate(), eye.clone().addScaledVector(fwd, 0.004)),    // 眼球中心前面一點
+        at(side.clone().negate(), eye.clone().addScaledVector(side, -0.062)), // 兩眼外角之間
+        at(side.clone(), eye.clone().addScaledVector(side, 0.062)),
+      ];
+      this.hairClip = { local, world: local.map(p => p.clone()) };
+      this.renderer.localClippingEnabled = true;
+    }
+    const isOver = n => /FaceBrow|FaceEyeline|FaceEyelash/.test(n);
+    const isBody = n => /Body_\d+_SKIN|_CLOTH/.test(n);
+    const done = new Set();
+    root.traverse(o => {
+      if (!o.isMesh) return;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        const n = m.name || '';
+        if (isOver(n)) o.renderOrder = 10;
+        if (done.has(m)) continue; done.add(m);
+        for (const [pat, hex] of Object.entries(tints)) if (n.includes(pat)) {
+          const c = new THREE.Color('#' + hex);
+          if (m.color) m.color.multiply(c);
+          if (m.shadeColorFactor) m.shadeColorFactor.multiply(c).multiplyScalar(0.85);
+        }
+        if (isBody(n)) {   // 身體、手、衣服：在 stencil 寫 1（眉毛不能畫到這些上面）
+          Object.assign(m, { stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp });
+          if ('outlineWidthFactor' in m) m.outlineWidthFactor *= 1.6;
+        }
+        if (this.hairClip && /_HAIR/.test(n) && !/HairBack/.test(n)) Object.assign(m, { clipping: true, clippingPlanes: this.hairClip.world, clipIntersection: true });
+        if (isOver(n)) {   // 眉毛、眼線：不做深度測試（蓋過瀏海），但 stencil=1 的地方（手、身體）不畫
+          Object.assign(m, { depthTest: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.NotEqualStencilFunc,
+            stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.KeepStencilOp });
+          o.renderOrder = 10;
+        }
+      }
+    });
   }
 
   dispose() {
@@ -194,6 +246,7 @@ export class Avatar3D {
     if (!this.ready) return;
     this.resize();
     this.pose(f);
+    if (this.hairClip) { this.b.Head.updateMatrixWorld(true); this.hairClip.local.forEach((p, i) => this.hairClip.world[i].copy(p).applyMatrix4(this.b.Head.matrixWorld)); }
     if (this.vrm && this.vrm.springBoneManager) {   // 頭髮、衣服自然擺動
       const now = performance.now(); this.vrm.springBoneManager.update(Math.min(0.05, (now - this.t) / 1000)); this.t = now;
     }
@@ -318,9 +371,9 @@ export class Avatar3D {
       const c = x => Math.max(0, Math.min(1, x));
       tgt.jaw = c(e.mouth * 0.9);
       tgt.blinkL = c((0.45 - e.eyeL) / 0.35); tgt.blinkR = c((0.45 - e.eyeR) / 0.35);
-      tgt.browUpL = c(e.browL * 0.8); tgt.browUpR = c(e.browR * 0.8); tgt.browIn = c((e.browL + e.browR) * 0.4);
-      tgt.browDownL = tgt.browDownR = c(-(e.browL + e.browR) * 0.35 + e.furrow * 0.7);
-      tgt.smileL = tgt.smileR = c(e.smile * 0.9);
+      tgt.browUpL = c(e.browL * 1.1); tgt.browUpR = c(e.browR * 1.1); tgt.browIn = c((e.browL + e.browR) * 0.5);
+      tgt.browDownL = tgt.browDownR = c(-(e.browL + e.browR) * 0.45 + e.furrow * 0.9);
+      tgt.smileL = tgt.smileR = c(e.smile * 1.0);
       tgt.sad = tgt.sadR = c(-e.smile * 0.6);
       tgt.eyeWide = tgt.eyeWideR = c((e.browL + e.browR) * 0.25 + (Math.min(e.eyeL, e.eyeR) - 1.1) * 1.5);
     } else {   // 沒有臉部資料：偶爾眨眼

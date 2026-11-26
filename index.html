@@ -75,6 +75,8 @@ label.inline{display:flex;align-items:center;gap:6px}
 details summary{cursor:pointer;font-weight:600}
 code{background:#eee8dc;padding:1px 5px;border-radius:5px}
 .qbar{flex-wrap:wrap;gap:6px}
+.verfoot{text-align:center;color:var(--muted);font-size:12px;padding:10px 0 calc(env(safe-area-inset-bottom) + 12px)}
+#pAvatar .stage{background:linear-gradient(#d5e1ec,#b9cad9)}
 .stage.realmode{aspect-ratio:3/4;max-height:72vh;margin:0 auto}.stage video.real{object-fit:contain;background:#dfe8f1;transition:opacity .15s}
 .stage .realcap{position:absolute;left:50%;bottom:4%;transform:translateX(-50%);background:rgba(30,34,48,.8);color:#fff;font-weight:700;padding:.2em .8em;border-radius:99px;font-size:1.3em}.stage .realcap:empty{display:none}.stage.skel .realcap{display:none}.qbar select{flex:1 1 100%}
 </style>
@@ -240,10 +242,12 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
       <h2>⚙️ 設定</h2>
       <label>辨識嚴格度（越小越嚴格）：<b id="thVal"></b><input type="range" id="threshold" min="0.4" max="3" step="0.05"></label>
       <div class="row"><label class="grow">手語人像：<select id="avatarKind" style="width:100%">
-        <option value="vrm-f1">插畫風 3D 主播：女・長髮（推薦）</option>
-        <option value="vrm-f2">插畫風 3D 主播：女・短髮</option>
-        <option value="vrm-m1">插畫風 3D 主播：男・短髮</option>
+        <option value="vrm-f1">插畫風 3D 主播：女・黑長髮</option>
+        <option value="vrm-f2">插畫風 3D 主播：女・短髮（深藍毛衣）</option>
+        <option value="vrm-f3">插畫風 3D 主播：女・深色短髮</option>
+        <option value="vrm-m1">插畫風 3D 主播：男・深色外套</option>
         <option value="vrm-m2">插畫風 3D 主播：男・背心領帶</option>
+        <option value="vrm-m3">插畫風 3D 主播：男・黑短髮（深色帽T）</option>
         <option value="toon-f">成熟插畫風 3D：女性</option>
         <option value="toon-m">成熟插畫風 3D：男性</option>
         <option value="real-f1">寫實主播：女・長髮（Colab 產生影片）</option>
@@ -283,7 +287,7 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
         <li><b>聾人 → 聽人</b>：右邊按 📷，對著鏡頭比；每比完一個詞（手放下或停住）就辨識，停下來後用台灣口音中文唸出整句。</li>
         <li>認錯的詞（紅色）可以點一下改成正確的詞。</li>
       </ol>
-      <p class="muted">以<b>台灣手語（自然手語）</b>為主。手語的詞序和中文不同，目前是逐詞翻譯，之後會加入 AI 調整句子。</p>
+      <p class="muted">以<b>台灣手語（自然手語）</b>為主。手語的詞序和中文不同，會先用 AI 調整成台灣手語語序再比（設定裡可改）。</p>
       <p class="muted">隱私：所有影片只在裝置上（或雲端分析時暫存）轉成骨架點，原始影像不保存。</p>
       <p class="muted">建議用 Chrome（Android／電腦）。iPhone 請用 Safari，並「加入主畫面」。</p>
       <p class="muted" id="verInfo"></p>
@@ -291,6 +295,7 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
   </div>
 </section>
 </main>
+<footer class="verfoot" id="verFoot"></footer>
 <div class="toast" id="toast"></div>
 <script type="module" src="js/app.js"></script>
 </body>

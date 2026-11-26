@@ -1,4 +1,10 @@
-# 交接報告：台灣手語對話翻譯器（2026-11-26 下午，v0.7.0）
+# 交接報告：台灣手語對話翻譯器（2026-11-26 下午，v0.7.1）
+
+## v0.7.1（使用者選 A 動漫風方向，要求手勢與表情最清楚）
+- 6 位 VRoid 主播（女：黑長髮 Shino、短髮 AvatarSample_A 毛衣調深藍、深色短髮 Shibu；男：深色外套 AvatarSample_C、背心領帶 Fumiriya 頭髮調深棕、黑短髮 HairSample_Male 帽T調深藍灰），網址 `#tint=材質:色` 調色。
+- 清楚化（avatar3d.js `clarify`）：瀏海修剪（臉前、眉毛以下、兩眼外角之間的頭髮用 4 個裁切平面去掉，跟著頭動）、眉毛與眼線不做深度測試畫在頭髮前、但用 stencil 避開手和身體；身體描邊加粗；表情加強；主播背景改冷色漸層（原本米色接近膚色）。
+- 使用者還沒選定要哪幾位；VRoid Studio 是桌面軟體，這裡不能跑，只能改現成模型的顏色與畫法，臉型、髮型、服裝要使用者自己捏。
+- 版本號顯示在每頁最下面（使用者規則）。
 
 ## ★ 使用者目標（2026-11-26 確認）與下一步
 **目標**：每個人用手機打開網頁就能用。手機立著、螢幕和前鏡頭都對著聾人：
@@ -57,7 +63,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.7.0
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.7.1
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。

@@ -6,7 +6,7 @@ import * as store from './store.js';
 import { toGloss, aiGloss, mapGloss } from './gloss.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.7.0';
+const VERSION = '0.7.1';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -71,7 +71,13 @@ const paused = () => realOn ? real.paused : player.paused;
 function stopAll() { if (realOn) real.stop(); else player.stop(); setTimeout(pump, 0); }
 // 3D 人像：寫實女性／男性（微軟 Rocketbox，MIT），或自訂 Mixamo／Biped 骨架 .glb；載入失敗就用 2D
 const AVATAR_URLS = {
-  'vrm-f1': 'avatars/vrm-f1.vrm', 'vrm-f2': 'avatars/vrm-f2.vrm', 'vrm-m1': 'avatars/vrm-m1.vrm', 'vrm-m2': 'avatars/vrm-m2.vrm',
+  // 插畫風 3D（VRoid）：#tint=材質名稱:顏色 把衣服／頭髮調成深色，手和臉才清楚
+  'vrm-f1': 'avatars/vrm-f1.vrm',                                  // 黑長髮、深藍背心
+  'vrm-f2': 'avatars/vrm-f2.vrm#tint=Tops:4a5a8c',                 // 短髮、米色毛衣改深藍
+  'vrm-f3': 'avatars/vrm-f3.vrm',                                  // 深色短髮、深藍背心
+  'vrm-m1': 'avatars/vrm-m1.vrm',                                  // 深色短髮、深色外套
+  'vrm-m2': 'avatars/vrm-m2.vrm#tint=Hair:5a4640',                 // 背心領帶、頭髮改深棕
+  'vrm-m3': 'avatars/vrm-m3.vrm#tint=Tops:4a5470',                 // 黑短髮、白帽T改深藍灰
   'toon-f': 'avatars/tw-female.glb#toon', 'toon-m': 'avatars/tw-male.glb#toon',
   female: 'avatars/tw-female.glb',
   male: 'avatars/tw-male.glb',
@@ -89,8 +95,8 @@ async function applyAvatar() {
   const url = (S.avatarKind === '2d' || style) ? null : S.avatarKind === 'custom' ? S.avatarUrl.trim() || null : AVATAR_URLS[S.avatarKind] || AVATAR_URLS.female;
   if (url) $('avatarStatus').textContent = '3D 人像載入中…（第一次約 5 MB，之後會記住）';
   // VRM 比較大：語料預覽那格用同性別的 2D 人像，省手機記憶體
-  const isVrm = /\.vrm$/i.test(url || '');
-  if (isVrm) preview.style = { 'vrm-f1': 'f1', 'vrm-f2': 'f2', 'vrm-m1': 'm1', 'vrm-m2': 'm2' }[S.avatarKind] || 'f1';
+  const isVrm = /\.vrm(#|$)/i.test(url || '');
+  if (isVrm) preview.style = S.avatarKind.startsWith('vrm-m') ? 'm1' : 'f1';
   try { await Promise.all([player.set3D(url), preview.set3D(isVrm ? null : url)]); }
   catch (e) { console.warn(e); toast('3D 人像載入失敗，先用 2D 人像：' + e.message, 4000); player.set3D(null); preview.set3D(null); }
   $('avatarStatus').textContent = `語料庫：${byWord.size} 個詞、${samples.length} 筆樣本`;
@@ -539,7 +545,7 @@ if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = fillSettings;
 fillSettings();
 $('addCat').onchange = e => { S.addCat = e.target.value; try { localStorage.setItem('tsl-settings', JSON.stringify(S)); } catch {} };
 $('avatarKind').onchange = e => { $('avatarUrl').hidden = e.target.value !== 'custom'; };
-$('verInfo').textContent = '版本 ' + VERSION;
+$('verInfo').textContent = '版本 ' + VERSION; $('verFoot').textContent = '台灣手語對話翻譯器・版本 ' + VERSION;
 
 // ---------- PWA ----------
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
