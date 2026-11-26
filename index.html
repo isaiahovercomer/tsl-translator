@@ -453,6 +453,10 @@ body.f2f-on{overflow:hidden}
         <option value="word">照中文逐詞比</option></select></label></div>
       <div class="row"><label class="grow">同一個詞有兩種分類時，優先用：<select id="prefCat" style="width:100%">
         <option value="church">召會生活用語</option><option value="general">一般生活用語</option></select></label></div>
+      <div class="row"><label class="grow">手語辨識方式（鏡頭 → 詞）：<select id="recogEngine" style="width:100%">
+        <option value="model">辨識模型（較準，第一次開鏡頭要下載約 5 MB）</option>
+        <option value="dtw">DTW 比對（舊方法，跟語料一個一個比）</option></select></label></div>
+      <p class="muted" id="engInfo" style="margin:-4px 0 8px"></p>
       <label>手語辨識嚴格度（越小越嚴格，認錯太多就調小）：<b id="thVal"></b><input type="range" id="threshold" min="0.4" max="3" step="0.05"></label>
       <h2 style="margin-top:14px">同義說法</h2>
       <p class="muted">口語說法對應到語料庫的手語詞，一行一個，例如 <code>您好=你好</code>、<code>多謝=謝謝</code>。</p>

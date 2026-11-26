@@ -1,11 +1,22 @@
-# 交接報告：主恢復台灣手語對話翻譯（2026-11-26 深夜，v0.16.0）
+# 交接報告：主恢復台灣手語對話翻譯（2026-11-27 凌晨，v0.17.0）
 
 ## 下一步
-1. **網站接上模型**：onnxruntime-web 載 `models` 分支的 `tsl-recog.int8.onnx`（輸入就是現在送給 DTW 的 16×86 seqFeat 特徵，`classifyFeat` 旁邊加 `ModelRecognizer`，情境＝把不在情境的詞 logits 設 -∞），設定可切「模型／DTW」，真人實測比較。
-2. **請弟兄姊妹用收集模式錄**（最缺的先錄已做好）→ 有 5 人以上就在 Colab 重跑 `tsl_recog_train.ipynb`（真人資料會依「人」分訓練／測試）。
+1. **真人實測比較「模型 vs DTW」**：手機開面對面模式比幾句（設定 → 進階 → 手語辨識方式可切換），打開「幫忙改進辨識」上傳紀錄；紀錄每句有 `eng`（model-v1／dtw），模型模式每個手勢另存 `dtw` 候選，可直接比兩種的第一候選、AI 換掉率、使用者改正率。
+2. **請弟兄姊妹用收集模式錄**（最缺的先錄已做好）→ 有 5 人以上就在 Colab 重跑 `tsl_recog_train.ipynb`（真人資料會依「人」分訓練／測試）→ 新模型放 `models/v2/`、改 `js/model.js` 的 `MODEL_VER`。
 3. 例句切詞改用模型重新對齊（訓練→用模型重切→再訓練），標籤會更乾淨。
 4. 說話→手譯員**缺詞處理**（同義詞 → 拆字 → 畫面直接打字）；常缺的詞自動進收集清單。
 5. 2D 手譯員也用表情係數 `fbs`；離線（情境詞語料預先快取、沒網路 AI 挑詞改唸第一候選）。
+6. 之後可考慮：切段也改用模型（現在切段仍靠 DTW 距離）；有 `_none` 類別後模型可以直接擋掉不是手語的動作（fuse 已支援 none>0.5 就不送）。
+
+## v0.17.0：網站接上辨識模型
+- `js/model.js`（新）：`ModelRecognizer` 用 onnxruntime-web 1.31.1（CDN jsdelivr，`ort.wasm.min.mjs`，單執行緒 wasm）載 **`models/v1/`**（從 `models` 分支 `models/v1-cpu/` 複製到 main：tsl-recog.int8.onnx 2.1 MB＋labels.json＋report.json，同源、sw.js 快取優先）。第一次下載約 5 MB（wasm brotli 2.8 MB＋模型），**開鏡頭時才載**。
+  - 輸入＝`seqFeat(frames)`（16×86），輸出 logits；情境＝`setVocab(items, filter)` 做遮罩（詞或同義詞在情境裡，同 Recognizer.setFilter），不在情境的不算 softmax。
+  - `fuse(dtw, m)`：**切段仍用 DTW**（Spotter 不動、門檻不動）；這段像不像手語（dist）用 DTW 的最佳距離，**詞的順序用模型**，其他候選 dist＝d0×(1+0.2·ln(p0/p))，機率 <2% 或 <第一名 1/30 的候選不給（免得 AI 挑詞亂選）。DTW 第一名是模型不認得的詞（自己錄的本機語料）→ 用 DTW。模型 `_none` 機率 >0.5 → 整段不送。
+  - `modelStage()`：模型是非同步的，用 Promise 佇列包 Spotter 的 onWord／onRest，順序不亂。
+- `recog-worker.js`：背景執行緒裡跑模型；新訊息 `{t:'model', mode}` → 回 `{t:'model', state, err, ms}`；`word` 多帶 `info {eng, dtw, none}`。`spot-client.js`：`setModel(mode)`、`model {state, ms, err}`、`onModel`；主執行緒備用（`#noworker`）也支援模型。
+- `app.js`：設定 `S.recogEngine`（預設 `model`；進階設定「手語辨識方式」：辨識模型／DTW 比對，下面一行顯示狀態：下載中先用 DTW、失敗先用 DTW）。`startCam` 呼叫 `useEngine()`。效能列多「模型 N ms」。辨識紀錄多 `eng`、每個候選 `[詞, 距離, 機率]`、模型模式的 `dtw` 候選。
+- 測試：`python3 tools/test_model.py`（＋`'#noworker'`）：餵「謝謝／朋友／再見」語料影格，模型模式、DTW 模式都認對，紀錄格式正確；headless（swiftshader、單執行緒）模型每段約 45–50 ms（在背景執行緒，只在切出一段時跑一次，不是每格）。test_worker、test_f2f、test_collect 都通過。
+- ⚠️ 這個測試用的是辭典示範（模型訓練資料），只證明有接通；**準不準要真人實測**。離線比較見 v0.16.0 的表（模型 top-1 在三個情境比 DTW 高 7–10 個百分點）。
 
 ## v0.16.0：例句抽骨架、辨識模型第一版、收集進度
 ### ① 辭典例句影片抽骨架＋自動切詞（`corpus/sent/`）
@@ -242,7 +253,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.16.0；分支 collect（收集資料＋stats.json）、models（辨識模型）、reextract（Colab 重抽）
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.17.0；分支 collect（收集資料＋stats.json）、models（辨識模型）、reextract（Colab 重抽）
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。

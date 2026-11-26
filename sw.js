@@ -1,6 +1,6 @@
 // sw.js — 離線快取：程式本身先存起來；模型與語料用到才快取
-const V = 'tsl-v0.16.0';
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'js/app.js', 'js/core.js', 'js/avatar.js', 'js/avatar2d.js', 'js/realplayer.js', 'js/avatar3d.js', 'js/vision.js', 'js/store.js', 'js/gloss.js', 'js/stt.js', 'js/guide.js', 'js/scenes.js', 'js/collect.js', 'js/spot-client.js', 'js/recog-worker.js', 'icons/icon.svg', 'icons/icon-192.png'];
+const V = 'tsl-v0.17.0';
+const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'js/app.js', 'js/core.js', 'js/avatar.js', 'js/avatar2d.js', 'js/realplayer.js', 'js/avatar3d.js', 'js/vision.js', 'js/store.js', 'js/gloss.js', 'js/stt.js', 'js/guide.js', 'js/scenes.js', 'js/collect.js', 'js/spot-client.js', 'js/recog-worker.js', 'js/model.js', 'icons/icon.svg', 'icons/icon-192.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V && k !== 'tsl-models').map(k => caches.delete(k))))); self.clients.claim(); });
 self.addEventListener('fetch', e => {
@@ -14,7 +14,7 @@ self.addEventListener('fetch', e => {
   if (u.origin !== location.origin) return;
   // 3D 人像檔與已下載的語料骨架：不會改，快取優先（只下載一次）
   if (/\.mp4$/.test(u.pathname)) return;   // 影片交給瀏覽器（要支援分段讀取）
-  if (/\/avatars\/|\/corpus\/signs\/|\/realistic\/.+\.png$/.test(u.pathname)) {
+  if (/\/avatars\/|\/corpus\/signs\/|\/models\/|\/realistic\/.+\.png$/.test(u.pathname)) {
     e.respondWith(caches.open('tsl-models').then(async c => (await c.match(e.request)) || fetch(e.request).then(r => { if (r.ok) c.put(e.request, r.clone()); return r; })));
     return;
   }
