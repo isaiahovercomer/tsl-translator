@@ -27,7 +27,7 @@ errors = []
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--use-angle=swiftshader', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--ignore-certificate-errors'])
     ctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True, permissions=['camera', 'microphone'])
-    ctx.add_init_script(\"try{localStorage.setItem('tsl-guided','1')}catch(e){}\")
+    ctx.add_init_script("try{localStorage.setItem('tsl-guided','1')}catch(e){}")
     ctx.route('**/*', handle)
     pg = ctx.new_page()
     pg.on('pageerror', lambda e: errors.append(str(e)))
