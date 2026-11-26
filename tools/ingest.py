@@ -254,7 +254,7 @@ def from_url(url, segs, cat='general'):
     import yt_dlp
     with tempfile.TemporaryDirectory() as tmp:
         opts = {'format': 'bv*[height<=720][ext=mp4]/bv*[height<=720]/b[height<=720]/bv*/b', 'outtmpl': f'{tmp}/%(id)s.%(ext)s',
-                'quiet': True, 'noprogress': True, 'match_filter': yt_dlp.utils.match_filter_func(f'duration < {MAX_SECONDS}')}
+                'quiet': True, 'noprogress': True, 'remote_components': {'ejs:github'}, 'match_filter': yt_dlp.utils.match_filter_func(f'duration < {MAX_SECONDS}')}
         if os.environ.get('YT_COOKIES'):   # YouTube 會擋雲端主機：用 repo secret 提供登入 cookies（Netscape 格式）
             ck = Path(tmp) / 'cookies.txt'; ck.write_text(os.environ['YT_COOKIES'], 'utf-8'); opts['cookiefile'] = str(ck)
         with yt_dlp.YoutubeDL(opts) as y:
