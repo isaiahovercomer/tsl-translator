@@ -1,5 +1,7 @@
 # 台灣手語對話翻譯器（PWA）
 
+網站：https://tslinterpreter.pages.dev/ （Cloudflare Pages）・備用：https://isaiahovercomer.github.io/tsl-translator/
+
 聽人和聾人面對面坐著，一個畫面雙向翻譯，以**台灣手語（自然手語）**為主：
 
 - **聽人說話 → 手語人像**：瀏覽器語音辨識（zh-TW）→ 用語料庫的詞做最長比對 → 把每個詞的骨架動作接起來，由 3D 寫實人像即時比出來（手臂、手掌方向、每根手指、臉部表情）。
