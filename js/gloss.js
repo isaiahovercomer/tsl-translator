@@ -101,6 +101,19 @@ export async function aiGloss(text, hint, { timeout = 3500, endpoint = 'api/glos
   } catch { return null; } finally { clearTimeout(tm); }
 }
 
+// ---- 手語詞序 → 通順中文（/api/fluent），失敗或逾時回傳 null ----
+export async function aiFluent(words, { timeout = 4000, endpoint = 'api/fluent' } = {}) {
+  const ws = words.filter(w => w && w !== '？');
+  if (ws.length < 2) return ws[0] || null;
+  const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), timeout);
+  try {
+    const r = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ gloss: ws }), signal: ctl.signal });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return typeof j.text === 'string' && j.text.trim() ? j.text.trim() : null;
+  } catch { return null; } finally { clearTimeout(tm); }
+}
+
 /** AI 給的 gloss 詞 → 語料庫的詞（沒有的詞再用最長比對拆開） */
 export function mapGloss(gloss, vocab, aliases = {}) {
   const have = new Set(vocab), out = [];

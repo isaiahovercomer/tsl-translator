@@ -3,10 +3,10 @@ import { FPS, CATS, catOf, decodeFeat, Recognizer, Segmenter, tokenize, makeSamp
 import { AvatarPlayer, normalizeSeq, drawAvatar } from './avatar.js';
 import { Camera, extractFromFile, drawOverlay } from './vision.js';
 import * as store from './store.js';
-import { toGloss, aiGloss, mapGloss } from './gloss.js';
+import { toGloss, aiGloss, mapGloss, aiFluent } from './gloss.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.7.5';
+const VERSION = '0.8.0';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -32,7 +32,8 @@ const aliasMap = () => Object.fromEntries(S.aliases.split('\n').map(l => l.split
 
 // ---------- 分頁 ----------
 function route() {
-  const v = (location.hash || '#talk').slice(1);
+  let v = (location.hash || '#talk').slice(1);
+  if (v === 'f2f') { if (!f2fOn) { history.replaceState(null, '', '#talk'); } v = 'talk'; }
   const name = ['talk', 'corpus', 'add', 'settings'].includes(v) ? v : 'talk';
   document.querySelectorAll('section.view').forEach(s => s.classList.toggle('on', s.id === 'v-' + name));
   document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', a.dataset.v === name));
@@ -212,10 +213,10 @@ function startListen() {
     let interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const r = e.results[i];
-      if (r.isFinal) { const t = r[0].transcript.trim(); if (t) { $('speechText').textContent = t; enqueue(t); } }
+      if (r.isFinal) { const t = r[0].transcript.trim(); if (t) { $('speechText').textContent = t; $('f2fHear').textContent = t; enqueue(t); } }
       else interim += r[0].transcript;
     }
-    if (interim) $('speechText').innerHTML = `<span class="muted">${esc(interim)}…</span>`;
+    if (interim) { $('speechText').innerHTML = `<span class="muted">${esc(interim)}…</span>`; $('f2fHear').innerHTML = `<span class="interim">${esc(interim)}…</span>`; }
   };
   sr.onerror = e => { if (e.error === 'not-allowed') { toast('請允許使用麥克風'); listening = false; updateListenBtn(); } };
   sr.onend = () => { if (listening && !pausedForTTS) try { sr.start(); } catch {} };
@@ -223,7 +224,7 @@ function startListen() {
   updateListenBtn();
 }
 function stopListen() { listening = false; try { sr && sr.stop(); } catch {} updateListenBtn(); }
-function updateListenBtn() { $('btnListen').textContent = listening ? '⏹ 停止聆聽' : '🎤 開始聆聽'; $('btnListen').classList.toggle('rec', listening); }
+function updateListenBtn() { $('btnListen').textContent = listening ? '⏹ 停止聆聽' : '🎤 開始聆聽'; $('btnListen').classList.toggle('rec', listening); if (typeof f2fUpdate === 'function') f2fUpdate(); }
 $('btnListen').onclick = () => listening ? stopListen() : startListen();
 
 // ---------- 對話：手語 → 語音 ----------
@@ -246,22 +247,32 @@ function renderSignChips() {
   renderLog();
 }
 // 逐字稿：之前每一句一行，最後一行是正在比的這句（即時更新）
+// 每行 {g: 手語詞序, t: AI 轉的通順中文（還沒有／失敗＝null）}
 const logLines = [];
+const lineHtml = l => l.t ? `${esc(l.t)}<small>${esc(l.g)}</small>` : esc(l.g);
 function renderLog() {
   const cur = signWords.map(w => w.word || '？').join('');
   const el = $('signLog');
-  el.innerHTML = logLines.map(l => `<div>${esc(l)}</div>`).join('') + (cur ? `<div class="cur">${esc(cur)}</div>` : '');
+  el.innerHTML = logLines.map(l => `<div>${lineHtml(l)}</div>`).join('') + (cur ? `<div class="cur">${esc(cur)}</div>` : '');
   el.hidden = !logLines.length && !cur;
   el.scrollTop = el.scrollHeight;
+  // 面對面模式下方字幕：最近兩句＋正在比的
+  const f = $('f2fSign');
+  f.innerHTML = logLines.slice(cur ? -1 : -2).map(l => `<div>${lineHtml(l)}</div>`).join('') + (cur ? `<div class="cur">${esc(cur)}</div>` : '');
+  f.classList.toggle('empty', !f.innerHTML);
 }
-// 一句結束（停下來 2 秒多）：這句移到逐字稿、清空詞卡
-function endSentence() {
-  const s = sentence();
+// 一句結束（停下來 2 秒多）：這句移到逐字稿、清空詞卡；AI 把手語詞序轉成通順中文
+async function endSentence() {
+  const words = signWords.filter(w => w.word).map(w => w.word), s = words.join('');
   if (S.speakMode === 'pause' && s) say(s);
-  if (signWords.length) logLines.push(signWords.map(w => w.word || '？').join(''));
+  let line = null;
+  if (signWords.length) { line = { g: signWords.map(w => w.word || '？').join(''), t: null }; logLines.push(line); }
   if (logLines.length > 200) logLines.splice(0, logLines.length - 200);
   signWords = []; renderSignChips();
   if (s) $('signSentence').textContent = s;
+  const t = line && words.length >= 2 && S.glossMode === 'ai' && navigator.onLine !== false ? await aiFluent(words) : null;
+  if (t) { line.t = t; renderLog(); if (!signWords.length) $('signSentence').textContent = t; }
+  if (S.speakMode === 'fluent' && s) say(t || s);
 }
 $('signChips').onclick = e => {
   const c = e.target.closest('.chip'); if (!c) return;
@@ -297,23 +308,83 @@ function pickVoice() {
   const vs = speechSynthesis.getVoices();
   return vs.find(v => /zh[-_]TW/i.test(v.lang)) || vs.find(v => /zh/i.test(v.lang) && /Taiwan|臺灣|台灣/.test(v.name)) || vs.find(v => /zh/i.test(v.lang));
 }
-$('btnSpeak').onclick = () => { const s = sentence() || $('signSentence').textContent || logLines[logLines.length - 1]; if (s) say(s.replace(/？/g, ''), true); };
+$('btnSpeak').onclick = () => { const l = logLines[logLines.length - 1]; const s = sentence() || $('signSentence').textContent || (l && (l.t || l.g)); if (s) say(s.replace(/？/g, ''), true); };
 $('btnClear').onclick = () => { signWords = []; logLines.length = 0; renderSignChips(); $('signSentence').textContent = ''; };
 $('speakMode').value = S.speakMode;
 $('speakMode').onchange = e => { S.speakMode = e.target.value; saveS(); };
-$('btnCam').onclick = async () => {
-  if (cam && cam.running) { cam.stop(); $('btnCam').textContent = '📷 開啟鏡頭'; $('camHint').hidden = false; return; }
-  $('camStatus').textContent = '載入手勢辨識模型中（第一次約 10–20 秒）…'; $('btnCam').disabled = true;
+const camOn = () => !!(cam && cam.running);
+function stopCam() { if (cam) cam.stop(); $('btnCam').textContent = '📷 開啟鏡頭'; $('camHint').hidden = false; f2fUpdate(); }
+// size：面對面模式用較低解析度（手機同時跑人像＋辨識比較順）
+async function startCam(size) {
+  $('camStatus').textContent = '載入手勢辨識模型中（第一次約 10–20 秒）…'; $('btnCam').disabled = true; f2fStatus('載入手勢辨識模型中（第一次約 10–20 秒）…');
   attachFeats();
   const ov = $('camOverlay').getContext('2d');
   cam = new Camera($('camVideo'), (f, r) => {
     sizeTo($('camOverlay'), $('camVideo')); drawOverlay(ov, r, false);
     if (f) seg.push(f);
+    f2fSeen(!!f);
   });
-  try { await cam.start(); $('camHint').hidden = true; $('btnCam').textContent = '⏹ 關閉鏡頭'; $('camStatus').textContent = '準備好了，請比手語'; }
-  catch (e) { $('camStatus').textContent = '鏡頭無法開啟：' + e.message; }
-  $('btnCam').disabled = false;
-};
+  let ok = false;
+  try { await cam.start('user', size); ok = true; $('camHint').hidden = true; $('btnCam').textContent = '⏹ 關閉鏡頭'; $('camStatus').textContent = '準備好了，請比手語'; f2fStatus(''); }
+  catch (e) { $('camStatus').textContent = '鏡頭無法開啟：' + e.message; f2fStatus('鏡頭無法開啟：' + e.message); }
+  $('btnCam').disabled = false; f2fUpdate();
+  return ok;
+}
+$('btnCam').onclick = () => camOn() ? stopCam() : startCam();
+
+// ---------- 面對面模式：手機立著，螢幕＋前鏡頭都對著聾人 ----------
+// 主播全螢幕、右上角小視窗＝前鏡頭、上方字幕＝聽人說的話、下方字幕＝辨識出的手語中文
+let f2fOn = false, wakeLock = null, f2fHome = null;
+async function lockWake() {
+  try { if ('wakeLock' in navigator && document.visibilityState === 'visible') { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } } catch {}
+}
+document.addEventListener('visibilitychange', () => { if (f2fOn && document.visibilityState === 'visible' && !wakeLock) lockWake(); });
+function f2fStatus(t) { $('f2fStatus').textContent = t; $('f2fStatus').hidden = !t; }
+let seenT = 0;
+function f2fSeen(yes) {   // 小視窗外框：綠＝有拍到人，紅＝沒入鏡
+  if (!f2fOn) return; const now = performance.now(); if (now - seenT < 300) return; seenT = now;
+  $('f2fPip').classList.toggle('seen', yes); $('f2fPip').classList.toggle('lost', !yes);
+}
+function f2fUpdate() {
+  const on = listening || camOn();
+  $('f2fGo').textContent = on ? '⏹ 停止' : '▶ 開始'; $('f2fGo').classList.toggle('rec', on); $('f2fGo').classList.toggle('primary', !on);
+  $('f2fPip').classList.toggle('off', !camOn());
+  $('f2fPause').textContent = paused() ? '▶' : '⏸';
+}
+function enterF2F() {
+  if (f2fOn) return; f2fOn = true;
+  const avStage = $('avatar').parentElement, camStage = $('camVideo').parentElement;
+  f2fHome = [[avStage, avStage.parentElement, avStage.nextSibling], [camStage, camStage.parentElement, camStage.nextSibling]];
+  $('f2fStage').appendChild(avStage); $('f2fPip').appendChild(camStage);
+  $('f2f').hidden = false; document.body.classList.add('f2f-on');
+  const el = $('f2f');
+  if (el.requestFullscreen) el.requestFullscreen({ navigationUI: 'hide' }).then(() => screen.orientation?.lock?.('portrait')).catch(() => {});
+  else if (el.webkitRequestFullscreen) try { el.webkitRequestFullscreen(); } catch {}
+  lockWake(); f2fUpdate(); renderLog();
+  if (!$('f2fHear').textContent) $('f2fHear').innerHTML = '<span class="interim">按「▶ 開始」：手機會一面聽人說話、一面看你比手語</span>';
+  if (location.hash !== '#f2f') history.pushState({ f2f: 1 }, '', '#f2f');
+}
+function exitF2F(fromPop) {
+  if (!f2fOn) return; f2fOn = false;
+  for (const [n, parent, next] of f2fHome) parent.insertBefore(n, next);
+  $('f2f').hidden = true; document.body.classList.remove('f2f-on');
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  if (!fromPop && location.hash === '#f2f') history.back();
+}
+// 一個按鈕同時開麥克風＋前鏡頭
+async function f2fToggle() {
+  if (listening || camOn()) { stopListen(); stopCam(); f2fUpdate(); return; }
+  startListen();
+  await startCam({ width: 640, height: 480 });
+  f2fUpdate();
+}
+$('btnF2F').onclick = enterF2F;
+$('f2fExit').onclick = () => exitF2F();
+$('f2fGo').onclick = f2fToggle;
+$('f2fPause').onclick = () => { $('btnPause').click(); f2fUpdate(); };
+$('f2fNext').onclick = () => $('btnNext').click();
+addEventListener('popstate', () => { if (f2fOn && location.hash !== '#f2f') exitF2F(true); });
 function sizeTo(canvas, video) {
   if (video.videoWidth && canvas.width !== video.videoWidth) { canvas.width = video.videoWidth; canvas.height = video.videoHeight; }
 }
@@ -579,11 +650,11 @@ if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = fillSettings;
 fillSettings();
 $('addCat').onchange = e => { S.addCat = e.target.value; try { localStorage.setItem('tsl-settings', JSON.stringify(S)); } catch {} };
 $('avatarKind').onchange = e => { $('avatarUrl').hidden = e.target.value !== 'custom'; };
-$('verInfo').textContent = '版本 ' + VERSION; $('verFoot').textContent = '台灣手語對話翻譯器・版本 ' + VERSION;
+$('verInfo').textContent = '版本 ' + VERSION; $('verFoot').textContent = $('f2fVer').textContent = '台灣手語對話翻譯器・版本 ' + VERSION;
 
 // ---------- PWA ----------
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
 route();
 loadCorpus().then(applyAvatar);
-window.__tsl = { onSign, attachFeats, glossTokens, enqueue, real, recog, store, get samples() { return samples; }, playText, loadCorpus, openEditor, player, preview };
+window.__tsl = { enterF2F, exitF2F, endSentence, get logLines() { return logLines; }, onSign, attachFeats, glossTokens, enqueue, real, recog, store, get samples() { return samples; }, playText, loadCorpus, openEditor, player, preview };

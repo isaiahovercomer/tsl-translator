@@ -79,6 +79,36 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
 .verfoot{text-align:center;color:var(--muted);font-size:12px;padding:10px 0 calc(env(safe-area-inset-bottom) + 12px)}
 #pAvatar .stage{background:linear-gradient(#d5e1ec,#b9cad9)}
 .stage.realmode{aspect-ratio:3/4;max-height:72vh;margin:0 auto}.stage video.real{object-fit:contain;background:#dfe8f1;transition:opacity .15s}
+/* 面對面模式 */
+.f2fbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.signlog small,.f2f-sign small{display:block;font-size:.72em;color:var(--muted);font-weight:400}
+body.f2f-on{overflow:hidden}
+#f2f{position:fixed;inset:0;z-index:30;background:#1d2130;color:#fff;display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.f2f-hear{flex:none;padding:10px 14px;font-size:clamp(20px,5.4vw,30px);font-weight:700;line-height:1.35;min-height:2.9em;max-height:4.2em;overflow:hidden;display:flex;align-items:flex-end;background:#1d2130}
+.f2f-hear .interim{color:#aab2c8;font-weight:500}
+.f2f-stage{flex:1 1 auto;min-height:0;position:relative}
+.f2f-stage .stage{position:absolute;inset:0;aspect-ratio:auto;border-radius:0;max-height:none;margin:0;background:linear-gradient(#d5e1ec,#b9cad9)}
+.f2f-pip{position:absolute;top:calc(env(safe-area-inset-top) + 8px);right:calc(env(safe-area-inset-right) + 8px);width:26vw;max-width:170px;aspect-ratio:3/4;border-radius:12px;overflow:hidden;border:3px solid #6b7287;z-index:2;background:#000}
+.f2f-pip .stage{position:absolute;inset:0;aspect-ratio:auto;border-radius:0;background:#000}
+.f2f-pip .hint{display:none}
+.f2f-pip.seen{border-color:#3fbf7f}.f2f-pip.lost{border-color:#e0574a}.f2f-pip.off{opacity:.35}
+.f2f-hear{padding-right:calc(min(26vw,170px) + 22px)}
+.f2f-sign{flex:none;padding:8px 14px;font-size:clamp(18px,4.8vw,26px);font-weight:600;line-height:1.35;max-height:5.4em;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;background:#262b3d;border-top:1px solid #39405a}
+.f2f-sign.empty{min-height:0;padding:0;border:0}
+.f2f-sign .cur{color:#ffb3a8}.f2f-sign small{color:#9aa3bb}
+.f2f-status{flex:none;padding:4px 14px;font-size:14px;color:#ffd38a;background:#262b3d}
+.f2f-bar{flex:none;display:flex;gap:10px;justify-content:center;padding:10px 12px 8px;background:#262b3d}
+.f2f-bar button{font-size:18px;padding:10px 18px;background:#384058;color:#fff;border-color:#4b5470}
+.f2f-bar button.primary{background:#fff;color:var(--ink);border-color:#fff;flex:1;max-width:260px;justify-content:center}
+.f2f-bar button.rec{background:var(--brick);border-color:var(--brick);color:#fff;flex:1;max-width:260px;justify-content:center}
+.f2f-ver{flex:none;text-align:center;font-size:11px;color:#7c849c;padding-bottom:4px;background:#262b3d}
+@media (orientation:landscape){
+  #f2f{display:grid;grid-template-columns:1fr minmax(260px,38%);grid-template-rows:auto 1fr auto auto auto;grid-template-areas:"stage hear" "stage sign" "stage status" "stage bar" "stage ver"}
+  .f2f-stage{grid-area:stage}.f2f-hear{grid-area:hear;padding-right:14px;max-height:none;align-items:flex-start;font-size:clamp(18px,3vw,28px)}
+  .f2f-sign{grid-area:sign;max-height:none;border-top:0;background:#1d2130;font-size:clamp(17px,2.6vw,24px)}.f2f-sign.empty{padding:0}
+  .f2f-status{grid-area:status}.f2f-bar{grid-area:bar}.f2f-ver{grid-area:ver}
+  .f2f-pip{width:auto;height:34vh;max-width:none;right:auto;left:calc(env(safe-area-inset-left) + 8px)}
+}
 .stage .realcap{position:absolute;left:50%;bottom:4%;transform:translateX(-50%);background:rgba(30,34,48,.8);color:#fff;font-weight:700;padding:.2em .8em;border-radius:99px;font-size:1.3em}.stage .realcap:empty{display:none}.stage.skel .realcap{display:none}.qbar select{flex:1 1 100%}
 </style>
 </head>
@@ -96,6 +126,10 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
 
 <!-- 對話 -->
 <section class="view" id="v-talk">
+  <div class="card f2fbar">
+    <button class="primary" id="btnF2F">🧑‍🤝‍🧑 面對面模式</button>
+    <span class="muted">手機立著、螢幕和前鏡頭對著聾人：一面聽人說話比給他看，一面看他比手語唸出來。全螢幕、螢幕不休眠。</span>
+  </div>
   <div class="talk">
     <div class="card" id="pAvatar">
       <h2>🗣️ 聽人說話 → 手語人像</h2>
@@ -135,7 +169,8 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
       <div class="row">
         <select id="speakMode" title="辨識出來的手語怎麼唸" style="flex:1 1 100%">
           <option value="word">連續：比一個詞就唸一個詞（不用停）</option>
-          <option value="pause">整句：停下來再唸整句</option>
+          <option value="pause">整句：停下來再唸整句（手語詞序）</option>
+          <option value="fluent">整句・AI 通順：停下來後 AI 改成通順中文再唸</option>
           <option value="manual">手動：按「唸出來」才唸</option>
         </select>
       </div>
@@ -287,6 +322,21 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
 </section>
 </main>
 <footer class="verfoot" id="verFoot"></footer>
+<!-- 面對面模式（全螢幕） -->
+<div id="f2f" hidden>
+  <div class="f2f-hear" id="f2fHear"></div>
+  <div class="f2f-stage" id="f2fStage"></div>
+  <div class="f2f-pip off" id="f2fPip"></div>
+  <div class="f2f-sign empty" id="f2fSign"></div>
+  <div class="f2f-status" id="f2fStatus" hidden></div>
+  <div class="f2f-bar">
+    <button class="primary" id="f2fGo">▶ 開始</button>
+    <button id="f2fPause" title="暫停／繼續主播">⏸</button>
+    <button id="f2fNext" title="下一句">⏭</button>
+    <button id="f2fExit" title="離開面對面模式">✕</button>
+  </div>
+  <div class="f2f-ver" id="f2fVer"></div>
+</div>
 <div class="toast" id="toast"></div>
 <script type="module" src="js/app.js"></script>
 </body>

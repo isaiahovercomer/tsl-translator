@@ -30,8 +30,8 @@ export function toFrame(r) {
 // 鏡頭：每 1/15 秒取一格，回呼 (frame, rawResult)
 export class Camera {
   constructor(video, onFrame) { this.video = video; this.onFrame = onFrame; this.running = false; }
-  async start(facing = 'user') {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 960 }, height: { ideal: 720 } }, audio: false });
+  async start(facing = 'user', size = { width: 960, height: 720 }) {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: size.width }, height: { ideal: size.height } }, audio: false });
     return this.startStream(stream);
   }
   // 擷取其他分頁（例如正在播的 YouTube）：getDisplayMedia 必須在按鈕點擊裡呼叫

@@ -1,9 +1,21 @@
-# 交接報告：台灣手語對話翻譯器（2026-11-26 下午，v0.7.5）
+# 交接報告：台灣手語對話翻譯器（2026-11-26 傍晚，v0.8.0）
 
+## v0.8.0：面對面模式＋AI 轉通順中文
+- **面對面模式**（對話頁最上方「🧑‍🤝‍🧑 面對面模式」，網址 `#f2f`；按返回鍵或 ✕ 離開）：全螢幕（`#f2f` 疊在最上層），把原本的主播 `.stage` 和鏡頭 `.stage` 搬進來（離開時放回原位，three.js canvas 不重建）。
+  - 直式：上方字幕＝聽人說的話（辨識中灰字）、中間主播（頭靠上，avatar3d.js `resize` 在很直的畫面把多出的空間放腳下、寬度需求 1.1→0.95）、右上小視窗＝前鏡頭（外框綠＝有拍到人、紅＝沒入鏡）、下方字幕＝最近兩句手語（AI 通順中文＋灰色小字手語詞序）＋正在比的（紅字）、底部 ▶開始／⏸／⏭／✕。
+  - 橫式：主播在左、字幕與按鈕在右欄，鏡頭小窗在左上。
+  - 「▶ 開始」＝同時開麥克風＋前鏡頭（鏡頭降到 640×480：`Camera.start(facing, size)`）；Wake Lock（回到前景自動重拿）；requestFullscreen＋鎖直向（iPhone Safari 不支援元素全螢幕，會略過）。
+  - TTS 唸的時候暫停語音辨識（沿用 pausedForTTS）。
+  - **還沒在真手機上測**：Android Chrome／iOS Safari 同時開鏡頭＋語音辨識會不會衝突、MediaPipe＋VRM 同時跑的效能（不夠就把辨識降到 10 fps）。已用 headless Chrome（假鏡頭）測版面、進出、逐字稿：`tools/test_f2f.py`。
+- **AI 轉通順中文**：`functions/api/fluent.js`（/api/gloss 反方向，辭典 546 句 gloss→中文挑 12 句當範例，同模型）；前端 `aiFluent()`（gloss.js，4 秒逾時）。每句停下來後把手語詞序轉成通順中文，顯示在逐字稿（原詞序灰色小字）。唸法下拉多一個「整句・AI 通順：停下來後 AI 改成通順中文再唸」。「中文→手語詞序」設定不是 AI 時不轉；GitHub Pages 備用站沒有 API，自動略過。
+  - 測：`curl 'https://tslinterpreter.pages.dev/api/fluent?gloss=我/游泳/會'`
+- **批次匯入（2026-11-26 16:03 跑）12 支全失敗**：YT_COOKIES 仍失效（Sign in to confirm you’re not a bot／Video unavailable，後者之前下載成功過，也是被擋）。使用者重新匯出 cookies 後再跑。
+
+## v0.7.5（之前）
 ## v0.7.5：手語 → 語音改成連續
 - 下拉選單 `speakMode`：連續（比一個詞就唸一個詞，預設）／整句（停下來 2.2 秒唸整句，原本的）／手動。`say()` 排隊唸、不打斷；全部唸完才恢復語音辨識。
 - 逐字稿 `#signLog`：每句一行，正在比的這句即時顯示（紅字），停下來就換行；最多 200 行；「清除」一起清。
-- 之後可加：AI 把手語詞序轉成通順中文再唸（目前唸的是手語詞序）。
+- ✅ v0.8.0 已加：AI 把手語詞序轉成通順中文。
 - `window.__tsl.onSign / attachFeats` 給測試用。
 
 ## v0.7.4：使用者選定主播 **女＝vrm-f1（黑長髮 Shino）、男＝vrm-m3（黑短髮 HairSample_Male，帽T調深藍灰）**，都用 A3 扁平色塊
@@ -32,7 +44,7 @@
 → 一定要**即時、在手機上跑**：不能靠事先算好的影片（講到沒算過的詞就沒有）。Colab 寫實影片（v0.6.0）降為「固定內容的高畫質版」備用。
 
 **下一步（新工作階段做）**
-1. **面對面模式**（一個畫面）：主播全螢幕（直式）、右上角小視窗＝前鏡頭畫面（看自己有沒有入鏡）、上方字幕＝聽人說的話、下方字幕＝辨識出的手語中文；一個按鈕同時開麥克風＋前鏡頭；全螢幕、螢幕不休眠（Wake Lock）。手機語音辨識和 TTS 互相干擾：TTS 唸的時候暫停辨識（已有 pausedForTTS）。要實測：Android Chrome、iOS Safari 同時開鏡頭＋語音辨識是否衝突；MediaPipe＋人像同時跑的效能（必要時辨識降到 10～15 fps、人像畫面降解析度）。
+1. ✅（v0.8.0 已完成第一版，待真手機實測）**面對面模式**（一個畫面）：主播全螢幕（直式）、右上角小視窗＝前鏡頭畫面（看自己有沒有入鏡）、上方字幕＝聽人說的話、下方字幕＝辨識出的手語中文；一個按鈕同時開麥克風＋前鏡頭；全螢幕、螢幕不休眠（Wake Lock）。手機語音辨識和 TTS 互相干擾：TTS 唸的時候暫停辨識（已有 pausedForTTS）。要實測：Android Chrome、iOS Safari 同時開鏡頭＋語音辨識是否衝突；MediaPipe＋人像同時跑的效能（必要時辨識降到 10～15 fps、人像畫面降解析度）。
 2. ✅ **（v0.7.0 已完成第一版）主播外觀改 VRM 插畫風 3D**：預設 `vrm-f1`。四位 VRoid 官方範例（見 `avatars/VRM-CREDITS.md`：Shino、AvatarSample_A/C 、Fumiriya），`tools/vrm_slim.py` 把 12–19 MB 縮到 5–6 MB。avatar3d.js：VRM humanoid → Mixamo 名稱（VRM_MAP）、VRoid 臉部形狀名稱要從 primitives[].extras.targetNames 自己補（three.js 沒讀）、表情改用 avatar2d.js 的 faceExpr 校正值（Fcl_BRW_Surprised／Angry、EYE_Close_L/R、EYE_Surprised、MTH_A／Fun／Sorrow）、頭髮衣服 springBone 擺動；語料預覽格用 2D 省記憶體。importmap 加 @pixiv/three-vrm 3.6.0。已在 headless Chrome 測過女・長髮、男・短髮比「我想知道」「謝謝你」。待改：衣服是學生制服風，之後使用者可用 VRoid Studio 自己捏主播換掉；手機實測效能。
    （原規劃）**主播外觀改 VRM 插畫風 3D**（three-vrm、卡通著色 MToon，看起來像新竹那種韓漫插畫風；手指、臉部表情 blendshape 齊全，手機可即時跑）。avatar3d.js 目前對應 Mixamo／Biped 骨頭，要加 VRM humanoid 骨頭對應＋VRM 表情（happy、angry、surprised、blink、aa/ih/ou…，配合 avatar2d.js 已校正的臉部參數）。主播來源待使用者決定：VRoid Studio 自己捏（Windows 免費）匯出 .vrm，或先找授權允許使用的免費 VRM。
 3. 寫實影片 Colab（下方 v0.6.0）保留，不是優先。
@@ -82,7 +94,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.7.5
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.8.0
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。
