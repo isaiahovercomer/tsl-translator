@@ -1,4 +1,15 @@
-# 交接報告：台灣手語對話翻譯器（2026-11-26 晚上，v0.10.1）
+# 交接報告：台灣手語對話翻譯器（2026-11-26 晚上，v0.11.0）
+
+## v0.11.0：鏡頭權限、使用說明、安裝到主畫面
+- 起因：使用者手機打開後鏡頭開不起來。可能原因：在 LINE 內建瀏覽器裡（不能用鏡頭／麥克風）、權限曾被拒絕、或手勢模型下載太慢（以前要等模型載完畫面才出來，看起來像鏡頭沒開）。
+- `js/guide.js`（新）：
+  - `escapeInApp()`：UA 有 `Line/` 就自動加 `?openExternalBrowser=1` 重新導向（LINE 會改用手機預設瀏覽器開），只試一次。FB／IG 等內建瀏覽器顯示「用預設瀏覽器開啟」說明。
+  - `permState()`（permissions API）、`requestPerms()`（一次要鏡頭＋麥克風，失敗再分開試看是哪個）、`permHelpHtml()`（依 iPhone Safari／iPhone 主畫面 App／Android Chrome／Android 主畫面 App 給打開權限的步驟）、`mediaErr()`（NotAllowed／NotFound／NotReadable／模型載入失敗 → 中文）。
+  - 安裝：`beforeinstallprompt`（Android Chrome 直接跳安裝）；iPhone 顯示「分享 → 加入主畫面」說明。
+  - 使用說明全螢幕導覽 5 頁（歡迎／手機這樣擺／怎麼用／允許鏡頭和麥克風／安裝到主畫面），可左右滑、略過；第一次打開自動跳出（`localStorage tsl-guided`；`?noguide` 可跳過，測試用 add_init_script 設好）。
+- 首頁：「▶ 開始對話」下面加「📲 安裝到主畫面」（已安裝就隱藏）、「📖 使用說明」；權限被拒或在內建瀏覽器時顯示紅色警告＋怎麼打開＋「我改好了，重新整理」；按開始時若權限已被拒絕，直接跳到權限頁。
+- `vision.js`：鏡頭畫面先出來再載模型；`preloadLandmarker()` 在允許權限、按開始時先下載模型。模型載入失敗時畫面保留、顯示原因。
+- 測試：`tools/test_guide.py` 情境（允許／拒絕／LINE UA）都通過；`tools/test_f2f.py` 通過。
 
 ## v0.10.1
 - 介面、說明文字的「聾人」全部改成「聽損者」（語料庫裡的手語詞「聾人」是辭典詞條，不改）。
@@ -126,7 +137,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.10.1
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.11.0
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。

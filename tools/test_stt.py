@@ -11,6 +11,7 @@ def handle(route):
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--use-angle=swiftshader','--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream','--use-file-for-fake-audio-capture=/tmp/t/mic.wav','--autoplay-policy=no-user-gesture-required'])
     ctx = b.new_context(viewport={'width':390,'height':844}, permissions=['microphone','camera'], service_workers='block')
+    ctx.add_init_script(\"try{localStorage.setItem('tsl-guided','1')}catch(e){}\")
     ctx.route('**/*', handle)
     pg = ctx.new_page(); errs=[]; t0=[None]
     pg.on('pageerror', lambda e: errs.append(str(e)))

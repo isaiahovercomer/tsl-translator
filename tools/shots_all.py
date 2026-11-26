@@ -14,6 +14,7 @@ def handle(route):
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--use-angle=swiftshader','--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream'])
     ctx = b.new_context(viewport={'width':390,'height':844}, device_scale_factor=1, is_mobile=True, has_touch=True, permissions=['camera','microphone'], service_workers='block')
+    ctx.add_init_script(\"try{localStorage.setItem('tsl-guided','1')}catch(e){}\")
     ctx.route('**/*', handle); pg = ctx.new_page()
     pg.goto(BASE + 'index.html'); pg.wait_for_function("window.__tsl && window.__tsl.samples.length > 0", timeout=60000); pg.wait_for_timeout(5000)
     for v in ['talk','corpus','add','settings']:

@@ -19,6 +19,10 @@ async function create(delegate) {
 export async function getLandmarker() {
   try { return await create('GPU'); } catch (e) { console.warn('GPU 失敗，改用 CPU', e); return create('CPU'); }
 }
+// 先在背景載入模型（使用說明、按開始時就開始下載），鏡頭打開時直接拿來用
+let pre = null;
+export function preloadLandmarker() { if (!pre) pre = getLandmarker().catch(e => { pre = null; throw e; }); pre.catch(() => {}); }
+function takeLandmarker() { const p = pre; pre = null; return p || getLandmarker(); }
 
 export function toFrame(r) {
   const pose = r.poseLandmarks && r.poseLandmarks[0];
@@ -41,9 +45,13 @@ export class Camera {
   async startStream(stream) {
     this.stream = stream;
     stream.getVideoTracks()[0].addEventListener('ended', () => this.onEnded && this.onEnded());
-    this.lm = this.lm || await getLandmarker();
+    // 先讓畫面出來（手機上模型要下載十幾 MB，不要讓人以為鏡頭沒開）
     this.video.srcObject = this.stream; this.video.muted = true; this.video.playsInline = true;
-    await this.video.play();
+    try { await this.video.play(); } catch {}
+    if (!this.lm) {
+      try { this.lm = await takeLandmarker(); }
+      catch (e) { const err = new Error('手勢辨識模型載入失敗（網路太慢或瀏覽器不支援）：' + (e.message || e)); err.code = 'MODEL'; throw err; }
+    }
     this.running = true; this.last = 0; this.lastTs = 0;
     const step = () => {
       if (!this.running) return;

@@ -1,13 +1,15 @@
 // app.js — 介面與流程
 import { FPS, CATS, catOf, decodeFeat, Recognizer, Segmenter, tokenize, makeSample, sampleFrames, sampleAspect, estimateAspect, decodeFrames, handsActive as handsUp } from './core.js';
 import { AvatarPlayer, normalizeSeq, drawAvatar } from './avatar.js';
-import { Camera, extractFromFile, drawOverlay } from './vision.js';
+import { Camera, extractFromFile, drawOverlay, preloadLandmarker } from './vision.js';
+import { ENV, escapeInApp, permState, permHelpHtml, mediaErr, initGuide, openGuide, guided, canInstall, install, onInstallChange } from './guide.js';
+escapeInApp();   // 在 LINE 裡打開：自動改用手機瀏覽器（LINE 內建瀏覽器不能用鏡頭和麥克風）
 import * as store from './store.js';
 import { toGloss, aiGloss, mapGloss, aiFluent } from './gloss.js';
 import { CloudSTT } from './stt.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.10.1';
+const VERSION = '0.11.0';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -235,7 +237,7 @@ async function startCloud() {
     },
   });
   try { await cstt.start(); listening = true; showInterim('🎤 請說話…'); }
-  catch (e) { cstt = null; toast(e.name === 'NotAllowedError' ? '請允許使用麥克風' : '無法啟動麥克風：' + e.message); }
+  catch (e) { cstt = null; const m = mediaErr(e, '麥克風'); toast(m, 5000); f2fStatus(m); if (e.name === 'NotAllowedError') showPermWarn(); }
   updateListenBtn();
 }
 function startListen() {
@@ -364,7 +366,11 @@ async function startCam(size) {
   });
   let ok = false;
   try { await cam.start('user', size); ok = true; $('camHint').hidden = true; $('btnCam').textContent = '⏹ 關閉鏡頭'; $('camStatus').textContent = '準備好了，請比手語'; f2fStatus(''); }
-  catch (e) { $('camStatus').textContent = '鏡頭無法開啟：' + e.message; f2fStatus('鏡頭無法開啟：' + e.message); }
+  catch (e) {
+    const m = mediaErr(e, '鏡頭'); $('camStatus').textContent = m; f2fStatus(m);
+    if (e.code === 'MODEL') { $('camHint').hidden = true; $('btnCam').textContent = '⏹ 關閉鏡頭'; }   // 鏡頭畫面有出來，只是辨識模型沒載到
+    else if (e.name === 'NotAllowedError') showPermWarn();
+  }
   $('btnCam').disabled = false; f2fUpdate();
   return ok;
 }
@@ -429,7 +435,29 @@ async function f2fToggle() {
 }
 $('btnF2F').onclick = e => { e.preventDefault(); enterF2F(); };
 // 首頁大按鈕：打開面對面畫面，同時開麥克風和鏡頭（要在同一次點擊裡，瀏覽器才肯給權限、全螢幕）
-$('btnStart').onclick = () => { enterF2F(); if (!(listening || camOn())) f2fToggle(); };
+$('btnStart').onclick = async () => {
+  // 權限已經被拒絕（或在 LINE 裡）：先教怎麼打開，不然進去也開不了
+  const st = await permState();
+  if (ENV.inApp || st.cam === 'denied' || st.mic === 'denied' || st.cam === 'unsupported') { showPermWarn(st); openGuide('perm'); return; }
+  preloadLandmarker();
+  enterF2F(); if (!(listening || camOn())) f2fToggle();
+};
+// ---------- 使用說明、權限提示、安裝到主畫面 ----------
+async function showPermWarn(st) {
+  st = st || await permState();
+  const bad = ENV.inApp || ['denied', 'unsupported'].includes(st.cam) || ['denied', 'unsupported'].includes(st.mic);
+  $('permWarn').hidden = !bad;
+  if (bad) $('permWarn').innerHTML = `⚠️ 鏡頭或麥克風不能用，沒辦法開始。<br>${permHelpHtml()}<br><button id="permRetry">我改好了，重新整理</button>`;
+  const r = $('permRetry'); if (r) r.onclick = () => location.reload();
+}
+initGuide({ onPermGranted: () => { preloadLandmarker(); showPermWarn(); } });
+$('btnGuide').onclick = () => openGuide(0);
+function updInstall() { $('btnInstall').hidden = !canInstall(); }
+onInstallChange(updInstall); updInstall();
+$('btnInstall').onclick = async () => { const r = await install(); if (r === 'manual') openGuide('install'); updInstall(); };
+showPermWarn();
+// 第一次打開：自動跳出使用說明（最後一頁問權限、教安裝）
+if (!guided() && !new URLSearchParams(location.search).has('noguide')) openGuide(0);
 $('f2fSize').onclick = () => f2fSize(true);
 $('f2fExit').onclick = () => exitF2F();
 $('f2fGo').onclick = f2fToggle;

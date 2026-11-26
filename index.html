@@ -94,6 +94,30 @@ button.big:active{transform:scale(.98)}
 @media (max-width:520px){.hero{flex-direction:column;text-align:left}.hero-art{flex:none;width:52%;max-width:200px;margin:-4px auto -6px}}
 h3.sect{font-size:15px;margin:18px 4px 8px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
 .talk>*{min-width:0}
+.hero-btns{display:flex;gap:8px;margin-top:10px}
+button.ghost{flex:1;justify-content:center;background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.35);font-size:15px;padding:9px 10px}
+.permwarn{margin-top:10px;background:#c0503f;color:#fff;border-radius:12px;padding:10px 12px;font-size:14.5px;line-height:1.5}
+.permwarn b{color:#ffe1b0}.permwarn button{margin-top:8px;background:#fff;color:var(--ink);border-color:#fff;font-size:14px;padding:6px 12px}
+/* 使用說明 */
+body.guide-on{overflow:hidden}
+.guide{position:fixed;inset:0;z-index:50;background:rgba(20,23,34,.72);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:calc(env(safe-area-inset-top) + 12px) 12px calc(env(safe-area-inset-bottom) + 12px)}
+.guide-card{position:relative;background:var(--paper);border-radius:22px;width:100%;max-width:460px;max-height:100%;overflow:auto;padding:26px 20px 14px;box-shadow:0 20px 50px rgba(0,0,0,.35);display:flex;flex-direction:column}
+.guide-skip{position:absolute;top:10px;right:10px;border:0;background:none;color:var(--muted);font-size:14px;padding:6px 8px}
+.gpage{flex:1;text-align:center;animation:gin .25s ease-out}
+@keyframes gin{from{opacity:0;transform:translateX(16px)}}
+.gpage h2{font-size:23px;margin:6px 0 10px;line-height:1.35}
+.gpage p{margin:8px 0;line-height:1.6}
+.gicon{font-size:56px;line-height:1.1;margin-top:6px}
+.gart{width:64%;max-width:240px;margin:0 auto;aspect-ratio:4/3;background:#2F3343;border-radius:16px;padding:6px}
+.glist{list-style:none;padding:0;margin:10px 0;text-align:left;display:flex;flex-direction:column;gap:10px}
+.glist li{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;line-height:1.5;font-size:16px}
+.glight{display:inline-block;background:#2e9d6a;color:#fff;border-radius:99px;padding:0 8px;font-size:13px;font-weight:600}
+.perm{display:flex;flex-direction:column;gap:6px;margin:12px 0;font-weight:600}
+.perm span{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px}
+.permok{margin-top:10px;font-weight:700;color:var(--ok);font-size:17px}
+.perm-help{margin-top:12px;text-align:left;background:#fff3e6;border:1px solid #f0c99a;border-radius:12px;padding:10px 12px;line-height:1.6;font-size:15px}
+.guide-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:16px}
+.guide-dots{display:flex;gap:6px}.guide-dots i{width:8px;height:8px;border-radius:50%;background:#d6cdbb}.guide-dots i.on{background:var(--gold);width:20px;border-radius:5px}
 .preview{border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:10px;background:#fbf8f2}
 details.adv{margin-top:12px;border-top:1px dashed var(--line);padding-top:10px}
 /* 面對面模式 */
@@ -177,7 +201,12 @@ body.f2f-on{overflow:hidden}
         <li><b>3</b><span>聽損者對著鏡頭比手語，手機<strong>唸出中文</strong></span></li>
       </ol>
       <button class="big" id="btnStart">▶ 開始對話</button>
-      <div class="hero-sub">第一次會詢問麥克風和相機權限・全螢幕、螢幕不休眠<br><a href="#" id="btnF2F">只打開畫面，等一下再開始</a></div>
+      <div class="permwarn" id="permWarn" hidden></div>
+      <div class="hero-btns">
+        <button class="ghost" id="btnInstall" hidden>📲 安裝到主畫面</button>
+        <button class="ghost" id="btnGuide">📖 使用說明</button>
+      </div>
+      <div class="hero-sub">會詢問鏡頭和麥克風權限・全螢幕、螢幕不休眠・<a href="#" id="btnF2F">只打開畫面</a></div>
     </div>
   </div>
   <h3 class="sect">分開操作・測試 <span class="muted">打字讓主播比、單獨開麥克風或鏡頭</span></h3>
@@ -374,13 +403,73 @@ body.f2f-on{overflow:hidden}
       <p class="muted">語料庫已有中正大學台灣手語線上辭典約 3,500 個詞，還可以自己錄、上傳影片或貼 YouTube 網址增加（「新增語料」）。</p>
       <p class="muted">以<b>台灣手語（自然手語）</b>為主。手語的詞序和中文不同，會先用 AI 調整成台灣手語語序再比（設定裡可改）。</p>
       <p class="muted">隱私：所有影片只在裝置上（或雲端分析時暫存）轉成骨架點，原始影像不保存。</p>
-      <p class="muted">建議用 Chrome（Android／電腦）。iPhone 請用 Safari，並「加入主畫面」。</p>
+      <p class="muted">建議用 Chrome（Android／電腦）。iPhone 請用 Safari，並「加入主畫面」。<a href="#" onclick="document.getElementById('btnGuide').click();return false">重新看使用說明</a></p>
       <p class="muted" id="verInfo"></p>
     </div>
   </div>
 </section>
 </main>
 <footer class="verfoot" id="verFoot"></footer>
+<!-- 第一次使用說明 -->
+<div id="guide" class="guide" hidden>
+  <div class="guide-card">
+    <button class="guide-skip" id="guideSkip">略過</button>
+    <div class="gpage" data-p="hello">
+      <div class="gicon">🤟</div>
+      <h2>歡迎使用<br>台灣手語對話翻譯器</h2>
+      <p>讓<b>聽人</b>和<b>聽損者</b>面對面聊天：</p>
+      <ul class="glist"><li>🗣️ 聽人說的話 → <b>主播比成台灣手語</b></li><li>🤟 聽損者比的手語 → <b>手機唸成中文</b></li></ul>
+      <p class="muted">只要一支手機，打開網頁就能用。</p>
+    </div>
+    <div class="gpage" data-p="place" hidden>
+      <div class="gart"><svg viewBox="0 0 200 150" width="100%" height="100%">
+        <defs><linearGradient id="hg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d5e1ec"/><stop offset="1" stop-color="#b9cad9"/></linearGradient></defs>
+        <rect x="70" y="14" width="60" height="112" rx="10" fill="#1d2130"/><rect x="74" y="24" width="52" height="88" rx="4" fill="url(#hg2)"/>
+        <circle cx="100" cy="48" r="9" fill="#f4d9c6"/><path d="M100 39c-8 0-11 6-10 13l2-6c3-4 13-4 16 0l2 6c1-7-2-13-10-13z" fill="#1d2130"/>
+        <path d="M86 92c0-14 6-22 14-22s14 8 14 22z" fill="#2f3343"/>
+        <path d="M88 74l-8-8m0 0l-3 2m3-2l2-4" stroke="#f4d9c6" stroke-width="4" stroke-linecap="round" fill="none"/><path d="M112 74l8-10m0 0l3 1m-3-1l-1-4" stroke="#f4d9c6" stroke-width="4" stroke-linecap="round" fill="none"/>
+        <circle cx="100" cy="19" r="2" fill="#6b7287"/><rect x="90" y="128" width="20" height="6" rx="2" fill="#C49356"/><path d="M78 134h44" stroke="#C49356" stroke-width="4" stroke-linecap="round"/>
+        <path d="M40 60q-8 12 0 24M30 54q-14 18 0 36" stroke="#C49356" stroke-width="4" fill="none" stroke-linecap="round"/>
+        <path d="M160 60q8 12 0 24M170 54q14 18 0 36" stroke="#C49356" stroke-width="4" fill="none" stroke-linecap="round"/>
+      </svg></div>
+      <h2>手機這樣擺</h2>
+      <ul class="glist"><li>📱 手機<b>立起來</b>（靠在杯子或手機架上）</li><li>👀 <b>螢幕和前鏡頭對著聽損者</b>，他看主播、對鏡頭比手語</li><li>🗣️ 聽人坐在旁邊或對面，正常說話</li></ul>
+    </div>
+    <div class="gpage" data-p="use" hidden>
+      <div class="gicon">💬</div>
+      <h2>怎麼用</h2>
+      <ul class="glist">
+        <li>按 <b>▶ 開始對話</b>，手機同時聽和看</li>
+        <li>🗣️ 聽人<b>講完一句稍停一下</b>，字幕出現、主播開始比</li>
+        <li>🤟 聽損者<b>對著鏡頭比</b>，手機用中文唸出來</li>
+        <li>左上角 <span class="glight">🎤 聽到聲音</span> <span class="glight">📷 看到手</span> 變綠色，表示有收到</li>
+        <li>⏸ 暫停、⏭ 下一句、<b>Aa</b> 放大字幕</li>
+      </ul>
+    </div>
+    <div class="gpage" data-p="perm" hidden>
+      <div class="gicon">📷🎤</div>
+      <h2>允許鏡頭和麥克風</h2>
+      <p>手機要「聽」聽人說話、「看」聽損者比手語，<b>一定要這兩個權限</b>。影像和聲音只用來即時翻譯，不會保存。</p>
+      <div class="perm"><span id="permCam">📷 鏡頭：尚未確認</span><span id="permMic">🎤 麥克風：尚未確認</span></div>
+      <button class="big" id="btnPerm">允許鏡頭和麥克風</button>
+      <div class="permok" id="permOk" hidden>✅ 都允許了，可以開始</div>
+      <div class="perm-help" id="permHelp" hidden></div>
+    </div>
+    <div class="gpage" data-p="install" hidden>
+      <div class="gicon">📲</div>
+      <h2>安裝到手機主畫面</h2>
+      <p>像 App 一樣從主畫面打開：全螢幕、開得更快，下次不用再找網址。</p>
+      <button class="big" id="btnInstall2">📲 安裝到主畫面</button>
+      <div class="permok" id="installDone" hidden>✅ 已經安裝在主畫面</div>
+      <div class="perm-help" id="installHelp" hidden></div>
+    </div>
+    <div class="guide-foot">
+      <button id="guideBack">‹ 上一步</button>
+      <div class="guide-dots" id="guideDots"></div>
+      <button class="primary" id="guideNext">下一步 ›</button>
+    </div>
+  </div>
+</div>
 <!-- 面對面模式（全螢幕） -->
 <div id="f2f" hidden>
   <div class="f2f-stage" id="f2fStage"></div>
