@@ -7,10 +7,11 @@ escapeInApp();   // 在 LINE 裡打開：自動改用手機瀏覽器（LINE 內�
 import * as store from './store.js';
 import { toGloss, aiGloss, mapGloss, aiFluent, aiPick } from './gloss.js';
 import { SCENES, SCENE_ORDER, sceneWords } from './scenes.js';
+import { initCollect } from './collect.js';
 import { CloudSTT } from './stt.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.13.1';
+const VERSION = '0.14.0';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -791,4 +792,6 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 
 route();
 loadCorpus().then(applyAvatar);
+// 收集模式（新增語料頁）
+initCollect({ samplesFor: w => (byWord.get(w) || []).filter(s => s.shared), frames: s => sampleFrames(s), aspect: s => sampleAspect(s), toast });
 window.__tsl = { spot, applyScene, enterF2F, exitF2F, endSentence, get logLines() { return logLines; }, onSign, attachFeats, glossTokens, enqueue, real, recog, store, get samples() { return samples; }, playText, loadCorpus, openEditor, player, preview };

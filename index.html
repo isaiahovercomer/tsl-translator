@@ -68,6 +68,28 @@ textarea{width:100%;min-height:80px}
 .f2f-pip.off + .f2f-tip{display:none}
 .f2f-tip.warn{background:#c0573f}
 .f2f-tip.hide{opacity:0;transition:opacity .8s}
+/* 收集模式 */
+#collect{position:fixed;inset:0;z-index:31;background:#1d2130;color:#fff;overflow:auto}
+.col-setup{max-width:520px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 14px) 16px 24px;display:flex;flex-direction:column;gap:10px}
+.col-setup label{display:flex;flex-direction:column;gap:4px;font-size:15px}
+.col-setup label.consent{flex-direction:row;align-items:flex-start;gap:8px;background:#2b3147;padding:10px;border-radius:10px}
+.col-setup input[type=text],.col-setup input:not([type]),.col-setup select{font-size:16px;padding:8px;border-radius:8px}
+.col-setup .muted,#collect .muted{color:#b9c0d4}
+.col-rec{display:flex;flex-direction:column;height:100%}
+.col-card{padding:calc(env(safe-area-inset-top) + 8px) 12px 6px;text-align:center;background:#262b3d}
+.col-prog{font-size:13px;color:#b9c0d4}
+.col-word{font-size:44px;font-weight:800;letter-spacing:2px;line-height:1.2;color:#ffd27a}
+.col-word.long{font-size:28px}
+.col-take{display:flex;gap:8px;justify-content:center;margin-top:4px;font-size:14px}
+.col-take span{min-width:28px;height:28px;border-radius:14px;border:2px solid #6b7287;display:inline-flex;align-items:center;justify-content:center}
+.col-take span.done{background:#3fbf7f;border-color:#3fbf7f}
+.col-main{flex:1;display:flex;gap:8px;padding:8px;min-height:0}
+.col-cam{flex:2;position:relative;aspect-ratio:auto;min-height:0}
+.col-demo{flex:1;display:flex;flex-direction:column;gap:6px;align-items:stretch;min-width:0}
+.col-demo canvas{width:100%;aspect-ratio:3/4;background:#eef1f7;border-radius:10px}
+.col-state{position:absolute;left:8px;right:8px;bottom:8px;text-align:center;font-size:17px;font-weight:700;padding:8px;border-radius:10px;background:rgba(20,28,48,.75)}
+.col-state.ready{background:#2f7d55}.col-state.rec,.col-state.none{background:#c0392b}.col-state.ok{background:#2f7d55}.col-state.short,.col-state.err{background:#b8860b}
+@media (orientation:portrait){.col-main{flex-direction:column}.col-demo{flex-direction:row;align-items:center}.col-demo canvas{width:30vw;flex:none}}
 .sentence{font-size:22px;font-weight:600;min-height:1.6em;margin-top:6px}
 .muted{color:var(--muted);font-size:14px}
 .status{font-size:13px;color:var(--muted);margin-top:6px}
@@ -323,6 +345,11 @@ body.f2f-on{overflow:hidden}
 
 <!-- 新增語料 -->
 <section class="view" id="v-add">
+  <div class="card collect-card">
+    <h2>🗂 收集模式：幫忙錄手語語料</h2>
+    <p>畫面出一個詞（或一句），對著手機前鏡頭比 3 次，自動換下一個。<b>只存骨架點、不存影像</b>，用來訓練手語辨識，讓翻譯越來越準。最需要：召會用語（辭典沒有的）。</p>
+    <button class="primary" id="btnCollect">▶ 開始收集</button>
+  </div>
   <div class="card catbar">
     <label>這次新增的語料分類：
       <select id="addCat"><option value="general">一般生活用語</option><option value="church">召會生活用語</option></select>
@@ -436,6 +463,32 @@ body.f2f-on{overflow:hidden}
 </section>
 </main>
 <footer class="verfoot" id="verFoot"></footer>
+<!-- 收集模式（js/collect.js） -->
+<div id="collect" hidden>
+  <div class="col-setup" id="colSetup">
+    <h2>🗂 收集模式</h2>
+    <p class="muted">每個人比的方式都有點不同，<b>越多人錄、辨識越準</b>。錄的時候只存手、身體、臉的骨架點（看不出是誰），不存影像。</p>
+    <label>代號（不用真名）<input id="colSigner" placeholder="例如：七會所-小明" maxlength="20"></label>
+    <label>慣用手 <select id="colHand"><option value="right">右手</option><option value="left">左手</option></select></label>
+    <label>要錄的清單 <select id="colList"></select></label>
+    <label>每個詞比幾次 <select id="colReps"><option>2</option><option selected>3</option><option>5</option></select></label>
+    <label id="colCodeRow" hidden>收集碼（負責的弟兄姊妹給的）<input id="colCode"></label>
+    <label class="consent"><input type="checkbox" id="colConsent"> 我同意把錄下的骨架點（不含影像）用來訓練台灣手語翻譯模型，並公開在 GitHub 的語料庫。</label>
+    <p class="muted">小提醒：手機直立放好、上半身和雙手都要入鏡；<b>手放下＝準備，舉手＝開始錄，比完手放下＝錄好</b>。比錯了按「↺ 重錄」。</p>
+    <div class="row"><button class="primary" id="colStart">▶ 開始錄</button><button id="colClose">✕ 關閉</button></div>
+    <p class="muted" id="colPending"></p>
+    <div class="row"><button id="colUpload" hidden>⬆ 上傳</button><button id="colDownload">💾 下載備份</button></div>
+  </div>
+  <div class="col-rec" id="colRec" hidden>
+    <div class="col-card"><div class="col-prog" id="colProg"></div><div class="col-word" id="colWord"></div><div class="col-take" id="colTake"></div></div>
+    <div class="col-main">
+      <div class="stage col-cam"><video id="colVideo" class="mirror" playsinline muted></video><canvas id="colOverlay" class="mirror"></canvas><div class="col-state" id="colState"></div></div>
+      <div class="col-demo"><canvas id="colDemo"></canvas><button id="colDemoBtn">▶ 看示範</button><div class="muted" id="colNoDemo" hidden>辭典沒有這個詞，用你平常的比法就好</div></div>
+    </div>
+    <div class="f2f-bar col-bar"><button id="colRedo">↺ 重錄</button><button id="colSkip">跳過</button><button id="colEnd">⏹ 結束</button></div>
+  </div>
+</div>
+
 <!-- 第一次使用說明 -->
 <div id="guide" class="guide" hidden>
   <div class="guide-card">

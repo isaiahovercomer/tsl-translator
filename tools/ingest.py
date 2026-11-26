@@ -45,7 +45,10 @@ def model(name):
 
 
 # ---------- 抽骨架 ----------
-def extract(video_path, progress=True):
+def extract(video_path, progress=True, on_image=None, blendshapes=False, raw=False):
+    """影片 → 骨架影格（每秒 15 格）。
+    on_image(rgb, k)：每個取樣影格都呼叫（Colab 重抽用：WiLoR 3D 手）；blendshapes=True 另外把每格 52 個臉部表情係數
+    放在 extract.blendshapes（沒有臉的格是 None）；raw=True 不做缺手補插（呼叫的人換掉手之後自己 fill_gaps）。"""
     import cv2
     import mediapipe as mp
     from mediapipe.tasks.python import BaseOptions, vision
@@ -59,7 +62,9 @@ def extract(video_path, progress=True):
         base_options=BaseOptions(model_asset_path=model('hand')), running_mode=vision.RunningMode.IMAGE, num_hands=2,
         min_hand_detection_confidence=0.2, min_hand_presence_confidence=0.2))
     face = vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(
-        base_options=BaseOptions(model_asset_path=model('face')), running_mode=V, num_faces=1))
+        base_options=BaseOptions(model_asset_path=model('face')), running_mode=V, num_faces=1,
+        output_face_blendshapes=blendshapes))
+    extract.blendshapes = []
     cap = cv2.VideoCapture(str(video_path))
     src_fps = cap.get(cv2.CAP_PROP_FPS) or 30
     total = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
@@ -90,12 +95,17 @@ def extract(video_path, progress=True):
             more = hand_in_crop(hand2, rgb, pl, mp)
             hands = (list(hands) + [h for h in more if all(math.dist((h[0].x, h[0].y), (g[0].x, g[0].y)) > 0.03 for g in hands)])[:2]
         frames.append(to_frame(pl, hands, fr.face_landmarks[0] if fr.face_landmarks else None))
+        if blendshapes:
+            bs = fr.face_blendshapes[0] if getattr(fr, 'face_blendshapes', None) else None
+            extract.blendshapes.append([c.score for c in bs] if bs else None)
+        if on_image is not None:
+            on_image(rgb, len(frames) - 1)
         if progress and len(frames) % 150 == 0:
             print(f'  {t:.0f} 秒 / {total / src_fps:.0f} 秒', flush=True)
     cap.release()
     for m in (pose, hand, hand2, face):
         m.close()
-    return fill_gaps(frames)
+    return frames if raw else fill_gaps(frames)
 
 
 class _P:

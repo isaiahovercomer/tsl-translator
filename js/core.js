@@ -85,7 +85,22 @@ export function makeSample(word, frames, src, extra = {}) {
     word: word.trim(), cat: 'general', fps: FPS, frames: frames.length, P, src, created: new Date().toISOString(),
     data: encodeFrames(frames), ...extra };
 }
-export const sampleFrames = s => s._frames || (s._frames = decodeFrames(s.data, s.frames));
+export const sampleFrames = s => s._frames || (s._frames = attachBS(decodeFrames(s.data, s.frames), s.fbs));
+// 臉部表情係數（Colab 重抽的語料才有，tools/reextract.py）：每格 52 個 0~254，第 0 個是 255＝那格沒有臉。
+// 放在影格的 .bs（Float32Array 52，0~1，MediaPipe／ARKit 順序，見 BS_NAMES），手譯員直接用來做表情
+export const BS_NAMES = ['_neutral', 'browDownLeft', 'browDownRight', 'browInnerUp', 'browOuterUpLeft', 'browOuterUpRight', 'cheekPuff', 'cheekSquintLeft', 'cheekSquintRight',
+  'eyeBlinkLeft', 'eyeBlinkRight', 'eyeLookDownLeft', 'eyeLookDownRight', 'eyeLookInLeft', 'eyeLookInRight', 'eyeLookOutLeft', 'eyeLookOutRight', 'eyeLookUpLeft', 'eyeLookUpRight',
+  'eyeSquintLeft', 'eyeSquintRight', 'eyeWideLeft', 'eyeWideRight', 'jawForward', 'jawLeft', 'jawOpen', 'jawRight', 'mouthClose', 'mouthDimpleLeft', 'mouthDimpleRight',
+  'mouthFrownLeft', 'mouthFrownRight', 'mouthFunnel', 'mouthLeft', 'mouthLowerDownLeft', 'mouthLowerDownRight', 'mouthPressLeft', 'mouthPressRight', 'mouthPucker', 'mouthRight',
+  'mouthRollLower', 'mouthRollUpper', 'mouthShrugLower', 'mouthShrugUpper', 'mouthSmileLeft', 'mouthSmileRight', 'mouthStretchLeft', 'mouthStretchRight',
+  'mouthUpperUpLeft', 'mouthUpperUpRight', 'noseSneerLeft', 'noseSneerRight'];
+export const BS = Object.fromEntries(BS_NAMES.map((n, i) => [n, i]));
+function attachBS(frames, str) {
+  if (!str) return frames;
+  const u = unb64(str); if (u.length < frames.length * 52) return frames;
+  frames.forEach((f, t) => { if (u[t * 52] !== 255) f.bs = Float32Array.from(u.subarray(t * 52, t * 52 + 52), x => x / 254); });
+  return frames;
+}
 // 影片寬高比（寬÷高）。x 以畫面寬、y 以畫面高正規化，3D 人像要用它換回真實比例。
 // 新樣本會記在 s.aspect；舊樣本用手的骨長估計。
 export const sampleAspect = s => s.aspect || s._aspect || (s._aspect = estimateAspect(sampleFrames(s)));

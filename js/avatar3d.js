@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { OFF, PI, FI, has } from './core.js';
+import { OFF, PI, FI, has, BS } from './core.js';
 import { faceExpr } from './avatar2d.js';
 
 // VRM（VRoid 等插畫風 3D 角色）：humanoid 骨頭名稱 → 這裡用的 Mixamo 名稱
@@ -449,8 +449,19 @@ export class Avatar3D {
   // 臉：用 avatar2d.js 校正過的表情參數（眉毛上揚／皺眉、眼睛開合、張嘴、嘴角）
   poseFace(f) {
     const tgt = {}; for (const k in this.face) tgt[k] = 0;
-    const e = faceExpr(f);
-    if (e) {
+    const e = f.bs ? null : faceExpr(f);
+    if (f.bs) {
+      // Colab 重抽的語料：直接用 52 個表情係數（ARKit 名稱）。VRoid 表情較少，對到最接近的，再稍微放大讓表情看得清楚
+      const b = f.bs, c = x => Math.max(0, Math.min(1, x)), g = n => b[BS[n]];
+      tgt.jaw = c(g('jawOpen') * 1.2);
+      tgt.blinkL = c((g('eyeBlinkLeft') - 0.15) * 1.4); tgt.blinkR = c((g('eyeBlinkRight') - 0.15) * 1.4);
+      tgt.browUpL = c((g('browOuterUpLeft') + g('browInnerUp') * 0.5) * 1.3); tgt.browUpR = c((g('browOuterUpRight') + g('browInnerUp') * 0.5) * 1.3);
+      tgt.browIn = c(g('browInnerUp') * 1.3);
+      tgt.browDownL = c(g('browDownLeft') * 1.5); tgt.browDownR = c(g('browDownRight') * 1.5);
+      tgt.smileL = c(g('mouthSmileLeft') * 1.3); tgt.smileR = c(g('mouthSmileRight') * 1.3);
+      tgt.sad = c(g('mouthFrownLeft') * 1.5); tgt.sadR = c(g('mouthFrownRight') * 1.5);
+      tgt.eyeWide = c(g('eyeWideLeft') * 1.5); tgt.eyeWideR = c(g('eyeWideRight') * 1.5);
+    } else if (e) {
       const c = x => Math.max(0, Math.min(1, x));
       tgt.jaw = c(e.mouth * 0.9);
       tgt.blinkL = c((0.45 - e.eyeL) / 0.35); tgt.blinkR = c((0.45 - e.eyeR) / 0.35);

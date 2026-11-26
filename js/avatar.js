@@ -11,7 +11,7 @@ export function normalizeSeq(frames, aspect = 1) {
   if (aspect && aspect !== 1) frames = frames.map(f => {
     const g = new Float32Array(f);
     for (let i = 0; i < P; i++) { g[i * 3] *= aspect; g[i * 3 + 2] *= aspect; }
-    return g;
+    g.bs = f.bs; return g;   // .bs＝臉部表情係數（有的語料才有）
   });
   const refs = frames.map(bodyRef).filter(Boolean);
   if (!refs.length) return frames;
@@ -24,6 +24,7 @@ export function normalizeSeq(frames, aspect = 1) {
       g[i * 3 + 1] = (f[i * 3 + 1] - r.cy) * k + STD.cy;
       g[i * 3 + 2] = f[i * 3 + 2] * k;
     }
+    g.bs = f.bs;
     return fillMissing(g);
   });
 }
@@ -85,6 +86,10 @@ export function lerpFrame(a, b, t) {
   for (let k = 0; k < a.length; k++) {
     const x = a[k], y = b[k];
     g[k] = Number.isNaN(x) ? y : Number.isNaN(y) ? x : x + (y - x) * t;
+  }
+  if (a.bs || b.bs) {   // 一邊沒有表情係數（例如回到休息姿勢）：當作平常臉，慢慢淡掉
+    const A = a.bs, B = b.bs; g.bs = new Float32Array(52);
+    for (let k = 0; k < 52; k++) g.bs[k] = (A ? A[k] : 0) * (1 - t) + (B ? B[k] : 0) * t;
   }
   return g;
 }

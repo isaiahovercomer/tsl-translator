@@ -1,6 +1,24 @@
-# 交接報告：主恢復台灣手語對話翻譯（2026-11-26 晚上，v0.13.1）
+# 交接報告：主恢復台灣手語對話翻譯（2026-11-26 晚上，v0.14.0）
 
-## v0.13.1：AI 挑詞的句子把半形「?」換成全形「？」（辭典詞「幾點?」帶問號）。線上實測：我|你/跑步|游泳/會|要 → 我會跑步；明天|今天/開會|聚會|吃飯/幾點?|多少（情境聚會）→ 明天聚會幾點？；你|我/名字|字/什麼|誰|哪裡 → 你叫什麼名字。
+## v0.14.0：收集模式＋Colab 重抽語料（WiLoR 3D 手＋臉部表情係數）
+### 收集模式（`js/collect.js`；新增語料頁最上面「🗂 開始收集」）
+- 設定：代號（不用真名）、慣用手、清單（寒暄／聚會／召會單詞、**辭典沒有的召會用語**（預設）、三種短句、自然動作）、每詞次數 2/3/5、收集碼（有設才出現）、同意勾選（必勾）。記在 localStorage `tsl-collect`，每個清單記得做到第幾個。
+- 錄：全螢幕，上方大字詞卡＋次數圈圈，鏡頭畫面（640×480）＋狀態列：手放下＝準備（綠）→ 舉手 2 格開始錄（含前 5 格）→ 手放下 8 格（句子 12 格）＝錄好（單詞最長 8 秒、句子 20 秒）；太短（<8 格）要重比。辭典有的詞旁邊 2D 小人像自動播示範（▶ 看示範）。↺ 重錄（刪掉上一次）、跳過、⏹ 結束。自然動作：每個提示連續錄 15 秒，word=`_none`。
+- 存：IndexedDB `tsl-corpus` 升 v2 加 `collect` store（store.js `collectAll/Put/Del`），每筆是 makeSample＋`kind`(word/sent/none)、`take`、`signer`、`hand`、`prompt`、`up`。每 10 個詞、清單做完、按結束時自動上傳；「💾 下載備份」可匯出 JSON。
+- 上傳：`functions/api/collect.js` → GitHub contents API 寫到 **`collect` 分支** `collect/<日期>/<代號>-<時間>.json`（commit 訊息有 `[CF-Pages-Skip]`，不會讓 Cloudflare 重新部署）。每批 ≤60 筆、≤3 MB；檢查同意、代號、格式。
+  - ⚠️ **要使用者設定**：Cloudflare Pages → tslinterpreter → 設定 → 變數和密鑰，加 `GH_COLLECT_TOKEN`（GitHub fine-grained token，只選 tsl-translator，Contents：Read and write；可以跟 Colab 用的同一個）；可選 `COLLECT_CODE`（收集碼）。沒設時 GET /api/collect 回 ready:false，資料先存在手機。
+- 清單在 `js/scenes.js`：`CHURCH_MISSING`（37 個召會用語）、`SENTENCES`（三情境共 44 句）、`NONE_PROMPTS`。
+- 測試：`python3 tools/test_collect.py`（餵語料影格模擬比 2 次 → 換詞 → 上傳內容）通過。
+
+### Colab 重抽語料（`colab/tsl_reextract.ipynb`，由 `tools/make_reextract_notebook.py` 產生；程式 `tools/reextract.py`）
+- 每個辭典詞條：下載影片 → MediaPipe（同 ingest.py，FaceLandmarker 打開 `output_face_blendshapes`）＋ **WiLoR-mini** 每格找 3D 手 → WiLoR 的手取代 MediaPipe 的手（x、y 用 WiLoR 2D 點，z＝3D 相對手腕深度×焦距÷深度÷畫面寬，跟 MediaPipe 同單位；沒找到的手保留 MediaPipe）→ 補插 → 存 `data`（格式不變）＋`fbs`（每格 52 個表情係數 0~254，沒臉＝第 0 個 255）＋`x: 'wilor1'`。
+- 順序：情境詞（scenes.js）＋同義詞優先；存在雲端硬碟 `tsl-reextract/`，可續跑；⑤ 推到 repo **`reextract` 分支**的 `reextract/signs/general/`。之後：`python tools/reextract.py merge --out <資料夾>` → `node tools/build_feats.mjs` → `tools/eval_fingers.py` 比較。
+- ⚠️ **WiLoR 這裡沒辦法測**（安裝 torch／WiLoR 的權限被擋），只測過 `--no-wilor`（MediaPipe＋表情係數，6 秒/詞）。第一次在 Colab 跑可能要除錯；`pick_2d()` 會檢查 2D 點是否落在手框，格式不對時自己投影。WiLoR-mini 會自動下載 MANO 手模型（Max Planck 研究授權，非商業）。
+- 手譯員播放端已支援 `fbs`：core.js `sampleFrames` 把係數放到影格 `.bs`（`BS_NAMES` MediaPipe/ARKit 順序），avatar.js normalizeSeq／lerpFrame 帶著走（沒有的一邊當平常臉淡出），avatar3d.js `poseFace` 有 `.bs` 就直接對到 VRoid 表情（jawOpen、eyeBlink、browOuterUp/InnerUp/Down、mouthSmile/Frown、eyeWide，稍微放大）。已用本機重抽的「好」測過。
+
+## v0.13.1
+
+- AI 挑詞的句子把半形「?」換成全形「？」（辭典詞「幾點?」帶問號）。線上實測：我|你/跑步|游泳/會|要 → 我會跑步；明天|今天/開會|聚會|吃飯/幾點?|多少（情境聚會）→ 明天聚會幾點？；你|我/名字|字/什麼|誰|哪裡 → 你叫什麼名字。
 
 ## v0.13.0：手語 → 中文語音辨識優化（手機前鏡頭不靈敏、湊不成句子）
 1. **情境選單**（`js/scenes.js`）：寒暄常用／聚會／召會生活／全部詞彙。只在情境常用詞裡找（基本詞＋情境詞，語料庫沒有的詞自動略過；自己錄的本機語料每個情境都有；召會生活另含 cat=church 全部語料）。寒暄 146 詞。
@@ -175,7 +193,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.13.1
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.14.0
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。

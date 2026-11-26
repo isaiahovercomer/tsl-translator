@@ -4,15 +4,15 @@ export const REPO = 'isaiahovercomer/tsl-translator';
 let dbp = null;
 function idb() {
   return dbp || (dbp = new Promise((ok, bad) => {
-    const r = indexedDB.open('tsl-corpus', 1);
-    r.onupgradeneeded = () => r.result.createObjectStore('samples', { keyPath: 'id' });
+    const r = indexedDB.open('tsl-corpus', 2);   // v2：多一個 collect（收集模式錄的，等上傳）
+    r.onupgradeneeded = () => { for (const n of ['samples', 'collect']) if (!r.result.objectStoreNames.contains(n)) r.result.createObjectStore(n, { keyPath: 'id' }); };
     r.onsuccess = () => ok(r.result); r.onerror = () => bad(r.error);
   }));
 }
-async function tx(mode, fn) {
+async function tx(mode, fn, name = 'samples') {
   const db = await idb();
   return new Promise((ok, bad) => {
-    const t = db.transaction('samples', mode); const st = t.objectStore('samples');
+    const t = db.transaction(name, mode); const st = t.objectStore(name);
     const res = fn(st); t.oncomplete = () => ok(res && res.result !== undefined ? res.result : res); t.onerror = () => bad(t.error);
   });
 }
@@ -20,6 +20,10 @@ const clean = s => { const o = { ...s }; delete o._frames; delete o.shared; retu
 export const localAll = () => tx('readonly', st => st.getAll()).catch(() => []);
 export const localPut = s => tx('readwrite', st => st.put(clean(s)));
 export const localDel = id => tx('readwrite', st => st.delete(id));
+// 收集模式：{...sample, up: 0/1}
+export const collectAll = () => tx('readonly', st => st.getAll(), 'collect').catch(() => []);
+export const collectPut = s => tx('readwrite', st => st.put(clean(s)), 'collect');
+export const collectDel = id => tx('readwrite', st => st.delete(id), 'collect');
 
 // 共用語料庫：corpus/index.json = { signs:[{id,word,cat,file,src}], raw:[{id,title,url,cat,file,frames}] }
 // 檔案依分類分資料夾：corpus/signs/general/、corpus/signs/church/（raw 同理）
