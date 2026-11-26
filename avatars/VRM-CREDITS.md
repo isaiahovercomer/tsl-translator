@@ -2,6 +2,8 @@
 
 貼圖已用 `tools/vrm_slim.py` 縮小（骨頭、表情、材質設定未改）。
 
+vrm-f1.vrm 的短裙已用 `tools/long_skirt.py` 拉長成及踝長裙（只改裙子頂點位置，2026-11-26）。
+
 | 檔案 | 原始模型 | 授權 |
 |---|---|---|
 | vrm-f1.vrm | 千駄ヶ谷 篠（Sendagaya Shino），VRoid Project | CC0 |

@@ -7,7 +7,7 @@ import { toGloss, aiGloss, mapGloss, aiFluent } from './gloss.js';
 import { CloudSTT } from './stt.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.10.0';
+const VERSION = '0.10.1';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -79,7 +79,7 @@ function stopAll() { if (realOn) real.stop(); else player.stop(); setTimeout(pum
 const AVATAR_URLS = {
   // 插畫風 3D（VRoid）：#tint=材質名稱:顏色 把衣服／頭髮調成深色，手和臉才清楚
   // 使用者選定的畫法：A3 扁平色塊（look=flat）
-  'vrm-f1': 'avatars/vrm-f1.vrm#look=flat',                        // 黑長髮、深藍背心
+  'vrm-f1': 'avatars/vrm-f1.vrm?v=2#look=flat',                      // 黑長髮、深藍背心
   'vrm-f2': 'avatars/vrm-f2.vrm#tint=Tops:4a5a8c&look=flat',       // 短髮、米色毛衣改深藍
   'vrm-f3': 'avatars/vrm-f3.vrm#look=flat',                        // 深色短髮、深藍背心
   'vrm-m1': 'avatars/vrm-m1.vrm#look=flat',                        // 深色短髮、深色外套
@@ -107,7 +107,7 @@ async function applyAvatar() {
   const url = (S.avatarKind === '2d' || style) ? null : S.avatarKind === 'custom' ? S.avatarUrl.trim() || null : AVATAR_URLS[S.avatarKind] || AVATAR_URLS.female;
   if (url) $('avatarStatus').textContent = '3D 人像載入中…（第一次約 5 MB，之後會記住）';
   // VRM 比較大：語料預覽那格用同性別的 2D 人像，省手機記憶體
-  const isVrm = /\.vrm(#|$)/i.test(url || '');
+  const isVrm = /\.vrm([?#]|$)/i.test(url || "");
   if (isVrm) preview.style = S.avatarKind.startsWith('vrm-m') ? 'm2' : 'f1';
   try { await Promise.all([player.set3D(url), preview.set3D(isVrm ? null : url)]); }
   catch (e) { console.warn(e); toast('3D 人像載入失敗，先用 2D 人像：' + e.message, 4000); player.set3D(null); preview.set3D(null); }
@@ -208,11 +208,11 @@ document.addEventListener('keydown', e => {
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let sr = null, cstt = null, listening = false, pausedForTTS = false;
 const hasApi = !/github\.io$/.test(location.hostname);   // GitHub Pages 備用站沒有 /api
-// 面對面模式左上角的狀態燈（讓聾人知道手機有沒有聽到、有沒有看到）
+// 面對面模式左上角的狀態燈（讓聽損者知道手機有沒有聽到、有沒有看到）
 const LIGHT = { mic: { off: '🎤 麥克風關', on: '🎤 聆聽中', hot: '🎤 聽到聲音', busy: '⏳ 辨識中' }, eye: { off: '📷 鏡頭關', on: '📷 請比手語', seen: '📷 看到人', hot: '📷 看到手', warn: '📷 請入鏡' } };
 function setLight(id, kind, st) { const el = $(id); if (!el || el.dataset.st === st) return; el.dataset.st = st; el.textContent = LIGHT[kind][st]; el.className = 'light' + (st === 'off' ? '' : ' ' + st); }
 const micLight = st => setLight('f2fMic', 'mic', st);
-// 上一句留在畫面上（聾人要看得到），狀態（聽到聲音／辨識中）用小字接在後面
+// 上一句留在畫面上（聽損者要看得到），狀態（聽到聲音／辨識中）用小字接在後面
 let lastHeard = '';
 const showHeard = t => { lastHeard = t; $('speechText').textContent = t; $('f2fHear').textContent = t; };
 const showInterim = h => {
@@ -370,7 +370,7 @@ async function startCam(size) {
 }
 $('btnCam').onclick = () => camOn() ? stopCam() : startCam();
 
-// ---------- 面對面模式：手機立著，螢幕＋前鏡頭都對著聾人 ----------
+// ---------- 面對面模式：手機立著，螢幕＋前鏡頭都對著聽損者 ----------
 // 主播全螢幕、右上角小視窗＝前鏡頭、上方字幕＝聽人說的話、下方字幕＝辨識出的手語中文
 let f2fOn = false, wakeLock = null, f2fHome = null;
 async function lockWake() {
