@@ -1,5 +1,5 @@
 // Cloudflare Pages Function：/api/collect — 收集模式上傳的骨架語料 → GitHub repo 的 collect 分支（給 Colab 訓練用）
-// POST {signer, hand, consent: true, code?, samples: [{word, kind, data, frames, fps, P, aspect, take, ...}]}
+// POST {signer, hand, consent: true, code?, samples: [{word, kind, data, frames, fps, P, aspect, take, ...} 或 {kind: 'log', log: {...}}]}
 //   → 存成 collect/<日期>/<代號>-<時間>.json（commit 訊息帶 [CF-Pages-Skip]，Cloudflare 不會因此重新部署網站）
 // GET → {ready: true/false}（有沒有設定好可以上傳）
 // 需要在 Cloudflare Pages → 設定 → 變數和密鑰 加：
@@ -34,9 +34,14 @@ export async function onRequest({ request, env }) {
   const signer = String(b.signer || '').trim().slice(0, 20);
   if (!signer) return json({ error: '缺少代號' }, 400);
   const samples = Array.isArray(b.samples) ? b.samples.slice(0, MAX_SAMPLES) : [];
-  const clean = samples.filter(s => s && okStr(s.word, 40) && okStr(s.data, 400000) && Number.isInteger(s.frames) && s.frames > 0 && s.frames <= 600)
-    .map(s => ({ id: String(s.id || '').slice(0, 40), word: s.word, kind: ['word', 'sent', 'none'].includes(s.kind) ? s.kind : 'word', cat: s.cat === 'church' ? 'church' : 'general',
-      take: +s.take || 0, fps: +s.fps || 15, P: +s.P || 82, frames: s.frames, aspect: +s.aspect || undefined, created: String(s.created || '').slice(0, 30), data: s.data }));
+  // 一般樣本（收集／改正）：骨架 data；辨識紀錄（kind: 'log'）：只有 log 物件（詞、距離）
+  const isLog = s => s && s.kind === 'log' && s.log && typeof s.log === 'object' && JSON.stringify(s.log).length <= 20000;
+  const isSmp = s => s && okStr(s.word, 40) && okStr(s.data, 400000) && Number.isInteger(s.frames) && s.frames > 0 && s.frames <= 600;
+  const clean = samples.filter(s => isLog(s) || isSmp(s)).map(s => isLog(s)
+    ? { id: String(s.id || '').slice(0, 40), kind: 'log', created: String(s.created || '').slice(0, 30), log: s.log }
+    : { id: String(s.id || '').slice(0, 40), word: s.word, kind: ['word', 'sent', 'none'].includes(s.kind) ? s.kind : 'word', cat: s.cat === 'church' ? 'church' : 'general',
+      src: s.src === 'correct' ? 'correct' : 'collect', was: s.src === 'correct' ? String(s.was || '').slice(0, 40) : undefined,
+      take: +s.take || 0, fps: +s.fps || 15, P: +s.P || 82, frames: s.frames, aspect: +s.aspect || undefined, created: String(s.created || '').slice(0, 30), data: s.data });
   if (!clean.length) return json({ error: '沒有可以上傳的資料' }, 400);
   const now = new Date(), day = now.toISOString().slice(0, 10), stamp = now.toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
   const safe = signer.replace(/[^\w一-鿿-]/g, '_');
@@ -44,9 +49,9 @@ export async function onRequest({ request, env }) {
   const body = { v: 1, signer, hand: b.hand === 'left' ? 'left' : 'right', uploaded: now.toISOString(), ua: (request.headers.get('user-agent') || '').slice(0, 160), samples: clean };
   try {
     await ensureBranch(env);
-    const words = [...new Set(clean.map(s => s.word))];
+    const words = [...new Set(clean.filter(s => s.word).map(s => s.word))], nLog = clean.filter(s => s.kind === 'log').length;
     const r = await gh(env, `contents/${encodeURI(path)}`, { method: 'PUT', body: JSON.stringify({
-      message: `[CF-Pages-Skip] 收集：${signer} ${clean.length} 筆（${words.slice(0, 5).join('、')}${words.length > 5 ? ' 等' : ''}）`,
+      message: `[CF-Pages-Skip] 收集：${signer} ${clean.length - nLog} 筆骨架${nLog ? `、${nLog} 句辨識紀錄` : ''}（${words.slice(0, 5).join('、')}${words.length > 5 ? ' 等' : ''}）`,
       branch: BRANCH, content: b64utf8(JSON.stringify(body)) }) });
     if (!r.ok) return json({ error: 'GitHub 寫入失敗', status: r.status, detail: (await r.text()).slice(0, 200) }, 502);
     return json({ ok: true, path, n: clean.length });

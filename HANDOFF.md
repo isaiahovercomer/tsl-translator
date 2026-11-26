@@ -1,4 +1,15 @@
-# 交接報告：主恢復台灣手語對話翻譯（2026-11-26 晚上，v0.14.0）
+# 交接報告：主恢復台灣手語對話翻譯（2026-11-26 晚上，v0.15.0）
+
+## v0.15.0：真人實測的準備——辨識紀錄、改正變訓練資料、比對放背景執行緒、顯示每秒幾格
+1. **辨識紀錄**（設定頁「🛠 幫忙改進辨識」）：每句存一筆 `{kind:'log', log:{scene, mode, th, worker, ms, fps, slots:[{alt:[[詞,距離]×3], keep, n, fixed}], ai:{text,pick}, said}}` 到 IndexedDB collect（`S.recLog` 預設開，只存在手機）。設定頁顯示統計：幾句、幾個手勢、太不像沒送的、**AI 換掉第一候選 %、使用者改正 %、第一候選距離中位數**，可「💾 下載紀錄」。
+   - 打開「把紀錄和改正上傳」（`SET.help`，沒代號自動給「匿名-xxxx」）才上傳；累積 20 句自動上傳一次。/api/collect 接受 kind 'log'（只有 log 物件，≤20KB）。
+   - 用途：真人實測後看紀錄，重調 `S.threshold` 和 Spotter 參數（core.js `this.P`）。
+2. **改正變訓練資料**：詞卡改正時除了存本機語料，也存一筆 `src:'correct'`、`was`（原本認成什麼）的骨架到收集資料（同樣要打開幫忙改進才上傳）。AI 挑詞模式下，改過的詞只把那一個詞送給 AI。
+3. **比對放背景執行緒**：`js/spot-client.js`（主執行緒代理，介面同 Spotter）＋`js/recog-worker.js`（module worker 裡跑 Recognizer＋Spotter）。語料變了才送整包特徵、換情境只送詞集合。開不起來（舊瀏覽器）自動改回主執行緒；網址 `#noworker` 可強制主執行緒。
+4. **效能顯示**：vision.js Camera 加 `stats {fps, ms}`、`onStats`（每 2 秒）；鏡頭卡片下方顯示「鏡頭 N 格/秒・偵測 N ms・比對 N ms（背景）」，低於 9 格/秒提醒一次。取格時間修正（容許 4ms），60Hz 螢幕上從約 12 格/秒變成接近 15 格/秒。
+- 測試：`tools/test_worker.py`（餵「謝謝／朋友／再見」語料影格 → 背景執行緒認出 3 個詞、紀錄 1 句、改正存成 src=correct；`#noworker` 也測）、test_f2f、test_collect 都通過。
+- ⚠️ 還在等使用者：Cloudflare `GH_COLLECT_TOKEN`（2026-11-26 22:20 查還是 ready:false）；Colab 重抽在跑。
+
 
 ## v0.14.0：收集模式＋Colab 重抽語料（WiLoR 3D 手＋臉部表情係數）
 ### 收集模式（`js/collect.js`；新增語料頁最上面「🗂 開始收集」）
@@ -193,7 +204,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.14.0
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.15.0
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。

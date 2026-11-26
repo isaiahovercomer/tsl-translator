@@ -170,12 +170,15 @@ let uploading = false;
 export async function upload(loud) {
   if (uploading) return; uploading = true;
   try {
-    const pend = (await store.collectAll()).filter(s => !s.up);
-    if (!pend.length) { if (loud) ctx.toast('都上傳了'); return; }
+    // 收集模式錄的：要勾過收集同意；辨識紀錄／改正：要打開「幫忙改進辨識」
+    const allowed = s => (s.kind === 'log' || s.src === 'correct') ? SET.help : SET.consent;
+    const pend = (await store.collectAll()).filter(s => !s.up && allowed(s));
+    if (!pend.length) { if (loud) ctx.toast(SET.consent || SET.help ? '都上傳了' : '要先在收集模式勾同意，或在設定打開「幫忙改進辨識」'); return; }
+    if (!SET.signer) SET.signer = anon(), saveSet();
     let sent = 0;
     while (pend.length) {
       const batch = []; let size = 0;
-      while (pend.length && batch.length < 60 && size < 3e6) { const s = pend.shift(); batch.push(s); size += s.data.length + 300; }
+      while (pend.length && batch.length < 60 && size < 3e6) { const s = pend.shift(); batch.push(s); size += (s.data ? s.data.length : JSON.stringify(s.log || {}).length) + 300; }
       const r = await fetch('api/collect', { method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ signer: SET.signer, hand: SET.hand, code: SET.code, consent: true, samples: batch }) });
       if (!r.ok) {
@@ -191,5 +194,40 @@ export async function upload(loud) {
   } catch (e) { if (loud) ctx.toast('上傳失敗（網路？）資料還在手機裡'); }
   finally { uploading = false; refreshPending(); }
 }
+// ---------- 平常使用的辨識紀錄、改正（v0.15）----------
+const anon = () => '匿名-' + Math.random().toString(36).slice(2, 6);
+let sinceUp = 0;
+// 一句的辨識過程：{scene, mode, th, slots:[{alt:[[詞,距離]…], keep, n, fixed}], ai, said, fps, ms}
+export async function addLog(log) {
+  const id = 'log-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  try { await store.collectPut({ id, kind: 'log', word: '_log', log, created: new Date().toISOString(), up: 0 }); } catch { return; }
+  if (SET.help && ++sinceUp >= 20 && navigator.onLine !== false) { sinceUp = 0; upload(false); }
+}
+// 使用者把詞卡改正：骨架＋正確的詞（原本認成 was）
+export async function addCorrection(sample, was) {
+  try { await store.collectPut({ ...sample, id: 'c' + sample.id, src: 'correct', kind: 'word', was: was || null, take: 0, signer: SET.signer || null, hand: SET.hand || null, up: 0 }); } catch {}
+}
+export function enableHelp(on) {
+  SET.help = !!on; if (on && !SET.signer) SET.signer = anon(); saveSet();
+  if (on) upload(false);
+}
+export const helpOn = () => !!SET.help;
+// 統計：幾句、幾個手勢、AI 換掉第一候選的比例、使用者改正的比例、第一候選距離中位數
+export async function recStats() {
+  const logs = (await store.collectAll()).filter(s => s.kind === 'log').map(s => s.log);
+  let slots = 0, changed = 0, fixed = 0, dropped = 0; const d = [];
+  for (const l of logs) {
+    const kept = l.slots.filter(x => x.keep || x.fixed);
+    slots += l.slots.length; dropped += l.slots.length - kept.length;
+    for (const [i, x] of kept.entries()) {
+      if (x.fixed) fixed++;
+      if (l.ai && l.ai.pick && l.ai.pick[i] && x.alt[0] && l.ai.pick[i] !== x.alt[0][0]) changed++;
+      if (x.alt[0]) d.push(x.alt[0][1]);
+    }
+  }
+  d.sort((a, b) => a - b);
+  return { sentences: logs.length, slots, changed, fixed, dropped, medDist: d.length ? d[d.length >> 1] : null, logs };
+}
+
 // 測試用（tools/test_collect.py）：直接餵影格
 if (typeof window !== 'undefined') window.__collect = { feed: f => onFrame(f), get state() { return state; }, get idx() { return idx; }, get take() { return take; }, upload };

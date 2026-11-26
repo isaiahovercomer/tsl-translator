@@ -53,13 +53,17 @@ export class Camera {
       catch (e) { const err = new Error('手勢辨識模型載入失敗（網路太慢或瀏覽器不支援）：' + (e.message || e)); err.code = 'MODEL'; throw err; }
     }
     this.running = true; this.last = 0; this.lastTs = 0;
+    // stats：實際每秒幾格（fps）、每格偵測花幾毫秒（ms）——掉到 10 格以下辨識就會變差
+    this.stats = { fps: 0, ms: 0 }; let n = 0, t0 = performance.now();
     const step = () => {
       if (!this.running) return;
-      const now = performance.now();
-      if (now - this.last >= 1000 / FPS && this.video.readyState >= 2) {
-        this.last = now;
+      const now = performance.now(), gap = 1000 / FPS;
+      if (now - this.last >= gap - 4 && this.video.readyState >= 2) {   // 少 4ms 容許：畫面更新 60Hz 時才不會變成每 5 次才取一次（12 格/秒）
+        this.last = now - Math.min((now - this.last) % gap, 8);
         const ts = Math.max(this.lastTs + 1, Math.round(now)); this.lastTs = ts;
-        try { const r = this.lm.detectForVideo(this.video, ts); this.onFrame(toFrame(r), r); } catch (e) { console.warn(e); }
+        const a = performance.now();
+        try { const r = this.lm.detectForVideo(this.video, ts); this.stats.ms = this.stats.ms * 0.8 + (performance.now() - a) * 0.2; this.onFrame(toFrame(r), r); } catch (e) { console.warn(e); }
+        n++; if (now - t0 >= 2000) { this.stats.fps = n * 1000 / (now - t0); n = 0; t0 = now; if (this.onStats) this.onStats(this.stats); }
       }
       this.raf = requestAnimationFrame(step);
     };
