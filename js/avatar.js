@@ -149,6 +149,24 @@ function drawCaption(ctx, caption, W, H, S) {
     ctx.fillStyle = '#fff'; ctx.fillText(caption, cx, y0 + S * 0.07);
   }
 }
+// 字卡：語料庫沒有的詞，大字打在手譯員胸前（手是放下的，不會擋到）
+export function drawCard(ctx, text) {
+  const W = ctx.canvas.width, H = ctx.canvas.height, S = Math.min(W, H);
+  let fs = Math.round(S * 0.12);
+  ctx.font = `bold ${fs}px system-ui, "Noto Sans TC", sans-serif`;
+  const maxW = W * 0.86;
+  while (fs > 12 && ctx.measureText(text).width > maxW - fs * 0.8) { fs = Math.round(fs * 0.9); ctx.font = `bold ${fs}px system-ui, "Noto Sans TC", sans-serif`; }
+  const tw = ctx.measureText(text).width, bw = Math.max(tw + fs * 0.8, S * 0.36), bh = fs * 1.75, cx = W / 2, cy = H * 0.62;
+  ctx.fillStyle = 'rgba(255,255,255,.94)'; ctx.strokeStyle = '#d4a017'; ctx.lineWidth = Math.max(2, fs * 0.06);
+  const x = cx - bw / 2, y = cy - bh / 2, r = fs * 0.25;
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + bw, y, x + bw, y + bh, r); ctx.arcTo(x + bw, y + bh, x, y + bh, r); ctx.arcTo(x, y + bh, x, y, r); ctx.arcTo(x, y, x + bw, y, r); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#1f2533'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, cx, cy - fs * 0.1);
+  // 小字說明放在框裡下方（放框外會蓋到臉）
+  const sf = Math.max(10, Math.round(Math.min(fs * 0.26, S * 0.035)));
+  ctx.font = `${sf}px system-ui, "Noto Sans TC", sans-serif`; ctx.fillStyle = '#8a6d0b';
+  ctx.fillText('✍ 手語還沒收錄', cx, y + bh - sf * 0.75); ctx.textBaseline = 'alphabetic';
+}
 function line2(ctx, a, b, c, d) { ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke(); }
 function drawHand(ctx, f, off, X, Y, sw, skin, line) {
   ctx.fillStyle = skin; ctx.beginPath();
@@ -213,14 +231,20 @@ export class AvatarPlayer {
     if (this.r3d) this.r3d.dispose();
     this.r3d = r;
   }
-  // items: [{word, frames, aspect}]，frames 是原始影格
+  // items: [{word, frames, aspect}]，frames 是原始影格；{word, card: true}＝語料庫沒有的詞：手放下、把字打在畫面上（v0.18）
   play(items, append = true) {
     const now = performance.now();
     let start = this.cur;
     if (!append || !this.timeline.length) { this.timeline = []; this.t0 = now; }
     else start = this.timeline[this.timeline.length - 1].f;
-    const push = (f, word) => this.timeline.push({ f, word });
+    const push = (f, word, card) => this.timeline.push({ f, word, card });
     for (const it of items) {
+      if (it.card) {
+        const n = Math.round(FPS * Math.min(3, 0.7 + 0.3 * [...it.word].length));   // 一個字約 0.3 秒，最長 3 秒
+        for (let i = 1; i <= 5; i++) push(lerpFrame(start, REST, ease(i / 6)), it.word, it.word);
+        for (let i = 0; i < n; i++) push(REST, it.word, it.word);
+        start = REST; continue;
+      }
       const fr = normalizeSeq(it.frames, it.aspect);
       const trimmed = trimRest(fr);
       for (let i = 1; i <= 5; i++) push(lerpFrame(start, trimmed[0], ease(i / 6)), it.word);
@@ -237,12 +261,12 @@ export class AvatarPlayer {
   idle() { setTimeout(() => this.opt.onIdle && this.opt.onIdle(), 0); }
   tick(ts) {
     if (this.c.width !== Math.round(this.c.getBoundingClientRect().width * Math.min(2, window.devicePixelRatio || 1))) this.resize();
-    let f = this.cur, word = null;
+    let f = this.cur, word = null, card = null;
     if (this.timeline.length) {
       const x = Math.max(0, ((this.pausedAt || ts) - this.t0) / 1000 * FPS * this.speed);
       const i = Math.floor(x);
       if (i >= this.timeline.length - 1) { f = this.timeline[this.timeline.length - 1].f; this.timeline = []; this.idle(); }
-      else { f = lerpFrame(this.timeline[i].f, this.timeline[i + 1].f, x - i); word = this.timeline[i].word; }
+      else { f = lerpFrame(this.timeline[i].f, this.timeline[i + 1].f, x - i); word = this.timeline[i].word; card = this.timeline[i].card || null; }
     } else {
       // 待機時輕微呼吸
       const b = Math.sin(ts / 900) * 0.002;
@@ -251,9 +275,10 @@ export class AvatarPlayer {
     this.cur = f;
     if (word !== this.lastWord) { this.lastWord = word; this.onWord(word); }
     if (!this.c.offsetParent) return;          // 分頁沒顯示就不畫，省電
-    const caption = word || this.opt.idleCaption || '';
+    const caption = card ? '' : word || this.opt.idleCaption || '';
     if (this.r3d && this.r3d.ready) { this.r3d.render(f); drawAvatar(this.ctx, f, { caption, captionOnly: true }); }
     else drawAvatar(this.ctx, f, { ...this.opt, style: this.style, caption: this.pausedAt ? '⏸ ' + caption : caption });
+    if (card) drawCard(this.ctx, card);
   }
 }
 const ease = t => t * t * (3 - 2 * t);

@@ -8,6 +8,8 @@ export const MODEL_VER = 'v1';
 const ORT_VER = '1.31.1';
 const ORT = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VER}/dist/`;
 const NONE = '_none';
+// 離線準備要先下載的 onnxruntime 檔案（worker 裡 import 的就是這些）
+export const ORT_FILES = ['ort.wasm.min.mjs', 'ort-wasm-simd-threaded.mjs', 'ort-wasm-simd-threaded.wasm'].map(f => ORT + f);
 
 export class ModelRecognizer {
   constructor(base = new URL(`../models/${MODEL_VER}/`, import.meta.url).href) {

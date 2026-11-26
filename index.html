@@ -60,6 +60,7 @@ textarea{width:100%;min-height:80px}
 .chip.known{background:var(--gold);color:#fff}
 .chip.cur{outline:3px solid var(--brick)}
 .chip.unk{background:#f4d6d2;color:var(--brick);cursor:pointer}
+.chip.card{background:#fff;border:1.5px dashed var(--gold);color:#6b5410;text-decoration:none}
 .chip small{opacity:.75;margin-left:4px;font-size:12px}
 .signtip{display:none;position:absolute;left:8px;right:8px;bottom:8px;text-align:center;font-size:13px;color:#fff;background:rgba(20,28,48,.55);border-radius:8px;padding:4px 8px;pointer-events:none}
 .stage .hint[hidden] + .signtip{display:block}
@@ -425,9 +426,13 @@ body.f2f-on{overflow:hidden}
 <section class="view" id="v-settings">
   <div class="grid2">
     <div class="card">
+      <h2>📥 離線使用</h2>
+      <p class="muted">先把常用詞（基本詞＋寒暄／聚會／召會）的手語、手勢辨識模型下載到手機，到沒網路的地方也能比、也能認（約 30～40 MB，建議用 Wi-Fi）。沒網路時：聽人說話的語音辨識不能用（可以打字），AI 挑詞改唸第一候選。</p>
+      <div class="row"><button id="btnOffline">📥 下載離線用資料</button></div>
+      <div class="muted" id="offInfo" style="margin:4px 0 14px"></div>
       <h2>🛠 幫忙改進辨識</h2>
       <label class="inline"><input type="checkbox" id="recLog"> 在這支手機記錄辨識過程（每句的候選詞、相似度、AI 挑的、你改正的）</label>
-      <label class="inline" style="margin-top:6px"><input type="checkbox" id="helpOn"> 把紀錄和改正上傳，幫忙改進（只有詞、數字和骨架點，不含影像；用來量準確率、訓練辨識模型）</label>
+      <label class="inline" style="margin-top:6px"><input type="checkbox" id="helpOn"> 把紀錄、改正和手譯員比不出來的詞上傳，幫忙改進（只有詞、數字和骨架點，不含影像；用來量準確率、訓練辨識模型、決定先收集哪些詞）</label>
       <div class="muted" id="recStats" style="margin-top:8px"></div>
       <div class="row"><button id="btnRecStats">🔄 更新統計</button><button id="btnRecDl">💾 下載紀錄</button></div>
     </div>

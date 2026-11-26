@@ -1,12 +1,34 @@
-# 交接報告：主恢復台灣手語對話翻譯（2026-11-27 凌晨，v0.17.0）
+# 交接報告：主恢復台灣手語對話翻譯（2026-11-27 凌晨，v0.18.0）
 
 ## 下一步
 1. **真人實測比較「模型 vs DTW」**：手機開面對面模式比幾句（設定 → 進階 → 手語辨識方式可切換），打開「幫忙改進辨識」上傳紀錄；紀錄每句有 `eng`（model-v1／dtw），模型模式每個手勢另存 `dtw` 候選，可直接比兩種的第一候選、AI 換掉率、使用者改正率。
-2. **請弟兄姊妹用收集模式錄**（最缺的先錄已做好）→ 有 5 人以上就在 Colab 重跑 `tsl_recog_train.ipynb`（真人資料會依「人」分訓練／測試）→ 新模型放 `models/v2/`、改 `js/model.js` 的 `MODEL_VER`。
-3. 例句切詞改用模型重新對齊（訓練→用模型重切→再訓練），標籤會更乾淨。
-4. 說話→手譯員**缺詞處理**（同義詞 → 拆字 → 畫面直接打字）；常缺的詞自動進收集清單。
-5. 2D 手譯員也用表情係數 `fbs`；離線（情境詞語料預先快取、沒網路 AI 挑詞改唸第一候選）。
-6. 之後可考慮：切段也改用模型（現在切段仍靠 DTW 距離）；有 `_none` 類別後模型可以直接擋掉不是手語的動作（fuse 已支援 none>0.5 就不送）。
+2. **請弟兄姊妹用收集模式錄**（最缺的先錄已做好；新清單「說話時手譯員比不出來的詞」）→ 有 5 人以上就在 Colab 重跑 `tsl_recog_train.ipynb` → 新模型放 `models/v2/`、改 `js/model.js` 的 `MODEL_VER`。
+3. Colab 重抽（`reextract` 分支）跑完後：`python tools/reextract.py merge` → `node tools/build_feats.mjs` → `tools/eval_fingers.py`；新語料有 `fbs`，2D／3D 手譯員都會用表情係數。
+4. 例句切詞改用模型重新對齊（訓練→用模型重切→再訓練），標籤會更乾淨。
+5. 之後可考慮：切段也改用模型；有 `_none` 類別後模型直接擋掉不是手語的動作（fuse 已支援）；離線時聽人說話改用裝置上的語音辨識（現在雲端／瀏覽器內建都要網路，只能打字）。
+
+## v0.18.0：缺詞處理（字卡）、2D 表情係數、離線準備
+### ① 說話 → 手譯員：語料庫沒有的詞
+- `gloss.js` `smartTokenize()`（逐詞、規則詞序都用；AI 詞序的 `mapGloss` 同樣規則）：
+  1. 異體字（姐→姊、整個詞的異體也試：姐妹→姊妹）；
+  2. 詞裡每個字都有 → 拆開比（AI 給的 住校 這類仍照 AI 的拆法）；
+  3. 有字沒收錄 → **整個詞變字卡**，不再只比出半個詞（以前「弟兄」只比「兄」、「召會」只比「會」）。「整個詞」用瀏覽器內建中文斷詞 `Intl.Segmenter('zh-TW')` 找；斷詞也不認得、只剩一個沒收錄的字（召／會）→ 跟旁邊的單字湊成兩字詞。
+  - 例：弟兄姐妹們好 → [弟兄]/姊妹/們/好；今天晚上去聚會 → 今天/晚上/我們/去/[聚會]；耶穌基督是主 → [耶穌基督]/主。
+- 手譯員（`avatar.js`）：字卡＝手放下、胸前大字白底金框＋「✍ 手語還沒收錄」，約 0.7 秒＋每字 0.3 秒（最長 3 秒），3D／2D／寫實（交給骨架人像）都支援（`drawCard`）。詞卡列字卡是虛線框「✍聚會」，點了查辭典。
+- 常缺的詞：`collect.js` `noteMissing()` 記在 localStorage `tsl-miss`；打開「幫忙改進辨識」時累積 10 個詞就上傳一筆 `{kind:'log', log:{miss:{詞:次數}}}`；`functions/api/collect.js`／`tools/collect_stats.py` 統計到 `stats.json` 的 `missing`（不算進 logs）。收集模式新清單 **「說話時手譯員比不出來的詞（大家常說的）」**（`w:asked`：大家＋這支手機，次數多的在前，最多 80 個，語料庫已經有的不列）。
+- 測試：`python3 tools/test_missing.py`（斷詞、時間軸有字卡、詞卡、缺詞紀錄、收集清單；截圖 /tmp/miss_3d.png、miss_2d.png）。
+
+### ② 2D 手譯員用表情係數
+- `avatar2d.js` `faceExpr()`：影格有 `.bs`（Colab 重抽／辭典例句的 52 個表情係數）就換算成同樣的參數（眉、皺眉、眼睛、張嘴、嘴角），頭轉向仍用臉部點。平常臉基準＝辭典例句 1.6 萬格中位數（示範者平常 eyeBlink 0.38、eyeSquint 0.42、browDown 0.08）。3D 的眨眼門檻也從 0.15 改成 0.38（之前平常臉會半閉眼）。
+- 已用辭典例句（張嘴最大的一格）截圖確認 2D 嘴巴張開、嘴角正常。
+
+### ③ 離線
+- `js/offline.js`＋設定頁「📥 離線使用」：下載基本詞＋寒暄／聚會／召會共 236 個詞的手語骨架、index、feats.json、辨識模型、onnxruntime（約 30 MB；按鈕另外先載 MediaPipe 手勢模型）。sw.js 本來就會快取（signs、models 快取優先；jsdelivr 快取優先）。有 Wi-Fi（`navigator.connection.type`）且還沒準備過這一版 → 開網頁 20 秒後背景自動下載（不含 MediaPipe）。
+- 沒網路：AI 挑詞改唸第一候選、詞序改規則（原本就有）；語音辨識不能用（只能打字）。
+
+### 其他
+- `bestSample(word)` 抽出（prepare 和離線共用）。版本 0.18.0（sw `tsl-v0.18.0`）。
+- 全部測試通過：test_model、test_worker、test_f2f、test_collect、test_missing、test_guide、`node tools/test_collect_api.mjs`。
 
 ## v0.17.0：網站接上辨識模型
 - `js/model.js`（新）：`ModelRecognizer` 用 onnxruntime-web 1.31.1（CDN jsdelivr，`ort.wasm.min.mjs`，單執行緒 wasm）載 **`models/v1/`**（從 `models` 分支 `models/v1-cpu/` 複製到 main：tsl-recog.int8.onnx 2.1 MB＋labels.json＋report.json，同源、sw.js 快取優先）。第一次下載約 5 MB（wasm brotli 2.8 MB＋模型），**開鏡頭時才載**。
@@ -253,7 +275,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.17.0；分支 collect（收集資料＋stats.json）、models（辨識模型）、reextract（Colab 重抽）
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.18.0；分支 collect（收集資料＋stats.json）、models（辨識模型）、reextract（Colab 重抽）
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。

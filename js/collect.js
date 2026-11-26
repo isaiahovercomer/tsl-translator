@@ -8,7 +8,7 @@ import { SCENES, CORE, CHURCH_MISSING, SENTENCES, NONE_PROMPTS } from './scenes.
 
 const $ = id => document.getElementById(id);
 const LISTS = {
-  'w:greet': '寒暄常用（單詞）', 'w:meeting': '聚會（單詞）', 'w:church': '召會生活（單詞）', 'w:missing': '召會用語（辭典沒有的，最需要！）',
+  'w:greet': '寒暄常用（單詞）', 'w:meeting': '聚會（單詞）', 'w:church': '召會生活（單詞）', 'w:missing': '召會用語（辭典沒有的，最需要！）', 'w:asked': '說話時手譯員比不出來的詞（大家常說的）',
   's:greet': '寒暄短句', 's:meeting': '聚會短句', 's:church': '召會短句', 'none': '自然動作（不是手語）',
 };
 const SET = (() => { try { return JSON.parse(localStorage.getItem('tsl-collect') || '{}'); } catch { return {}; } })();
@@ -26,6 +26,7 @@ function itemsFor(key) {
   if (key === 'none') return NONE_PROMPTS.map(p => ({ word: '_none', prompt: p }));
   if (t === 's') return SENTENCES[k].map(g => ({ word: g, prompt: g.replace(/\//g, ' ／ ') }));
   if (k === 'missing') return CHURCH_MISSING.map(w => ({ word: w, prompt: w }));
+  if (k === 'asked') return askedWords().map(w => ({ word: w, prompt: w }));
   // 寒暄＝基本詞＋寒暄詞；聚會、召會只列自己的詞（基本詞在寒暄錄過了）
   const sp = x => x.split(/\s+/).filter(Boolean);
   const ws = [...new Set([...(k === 'greet' ? sp(CORE) : []), ...sp(SCENES[k].words)])];
@@ -66,7 +67,9 @@ async function start() {
   if (!signer) { $('colSigner').focus(); return ctx.toast('請填代號（不用真名）'); }
   if (!$('colConsent').checked) return ctx.toast('請先勾選同意');
   Object.assign(SET, { signer, hand: $('colHand').value, list: $('colList').value, reps: +$('colReps').value, code: $('colCode').value.trim(), consent: true, smart: $('colSmart').checked }); saveSet();
+  if (SET.list === 'w:asked') await loadStats();
   items = itemsFor(SET.list); reps = SET.reps; take = 0;
+  if (!items.length) { ctx.toast('還沒有缺詞紀錄：先用「聽人說話 → 手譯員」，手譯員比不出來的詞會自動列進來'); return; }
   kind = SET.list === 'none' ? 'none' : SET.list.startsWith('s:') ? 'sent' : 'word';
   if (SET.smart && kind !== 'none') {           // 最缺的先錄：每次開始都重新排（自己錄滿的放最後），從第一個開始
     await loadStats();
@@ -270,6 +273,30 @@ export async function upload(loud) {
   } catch (e) { if (loud) ctx.toast('上傳失敗（網路？）資料還在手機裡'); }
   finally { uploading = false; refreshPending(); }
 }
+// ---------- 說話時缺的詞（v0.18）----------
+// 手譯員比不出來（語料庫沒有）的詞：這支手機記在 localStorage；打開「幫忙改進辨識」就累積起來一起上傳（統計在 stats.json 的 missing）
+const MISS = 'tsl-miss', MISS_P = 'tsl-miss-pend';
+const jget = k => { try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch { return {}; } };
+const jset = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+export function noteMissing(words) {
+  const m = jget(MISS), pend = jget(MISS_P);
+  for (const w0 of words) {
+    const w = String(w0).trim().slice(0, 12);
+    if (!w || /^[\d\s.]+$/.test(w)) continue;   // 純數字不用收集
+    m[w] = (m[w] || 0) + 1; pend[w] = (pend[w] || 0) + 1;
+  }
+  jset(MISS, m);
+  if (SET.help && Object.keys(pend).length >= 10) { jset(MISS_P, {}); addLog({ miss: pend }); } else jset(MISS_P, pend);
+}
+export const localMissing = () => jget(MISS);
+// 收集清單：大家常缺的（stats.missing）＋這支手機缺的，次數多的在前，最多 80 個
+function askedWords() {
+  const c = {};
+  for (const [w, n] of Object.entries((remote && remote.missing) || {})) c[w] = (c[w] || 0) + n;
+  for (const [w, n] of Object.entries(jget(MISS))) c[w] = (c[w] || 0) + n;
+  // 語料庫已經有了就不列
+  return Object.entries(c).filter(([w]) => !(ctx && ctx.has && ctx.has(w))).sort((a, b) => b[1] - a[1]).slice(0, 80).map(([w]) => w);
+}
 // ---------- 平常使用的辨識紀錄、改正（v0.15）----------
 const anon = () => '匿名-' + Math.random().toString(36).slice(2, 6);
 let sinceUp = 0;
@@ -293,6 +320,7 @@ export async function recStats() {
   const logs = (await store.collectAll()).filter(s => s.kind === 'log').map(s => s.log);
   let slots = 0, changed = 0, fixed = 0, dropped = 0; const d = [];
   for (const l of logs) {
+    if (!l.slots) continue;   // 缺詞紀錄（{miss}）
     const kept = l.slots.filter(x => x.keep || x.fixed);
     slots += l.slots.length; dropped += l.slots.length - kept.length;
     for (const [i, x] of kept.entries()) {
@@ -302,7 +330,7 @@ export async function recStats() {
     }
   }
   d.sort((a, b) => a - b);
-  return { sentences: logs.length, slots, changed, fixed, dropped, medDist: d.length ? d[d.length >> 1] : null, logs };
+  return { sentences: logs.filter(l => l.slots).length, slots, changed, fixed, dropped, medDist: d.length ? d[d.length >> 1] : null, logs };
 }
 
 // 測試用（tools/test_collect.py）：直接餵影格

@@ -21,12 +21,19 @@ async function ensureBranch(env) {
   if (!c.ok && c.status !== 422) throw new Error('建立 collect 分支失敗：' + c.status);
 }
 // ---- 統計（tools/collect_stats.py 也是同樣算法，可以從全部檔案重算）----
-export const emptyStats = () => ({ v: 1, updated: null, files: 0, samples: 0, logs: 0, signers: {}, words: {} });
+export const emptyStats = () => ({ v: 1, updated: null, files: 0, samples: 0, logs: 0, signers: {}, words: {}, missing: {} });
 export function addStats(st, body) {
   const who = body.signer, day = (body.uploaded || '').slice(0, 10);
   let n = 0;
   for (const s of body.samples) {
-    if (s.kind === 'log') { st.logs++; continue; }
+    if (s.kind === 'log') {
+      // 說話時手譯員比不出來的詞（v0.18）：{miss: {詞: 次數}}
+      if (s.log && s.log.miss && typeof s.log.miss === 'object') {
+        const m = st.missing || (st.missing = {});
+        for (const [w, k] of Object.entries(s.log.miss)) if (typeof w === 'string' && w.length <= 12) m[w] = (m[w] || 0) + Math.min(50, Math.max(0, +k || 0));
+      } else st.logs++;
+      continue;
+    }
     if (!s.word) continue;
     n++; st.samples++;
     const w = st.words[s.word] || (st.words[s.word] = { n: 0, s: {} });

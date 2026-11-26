@@ -22,6 +22,48 @@ const GRAMMAR = [...DROP, ...TIME, ...QWORD, ...MODAL, ...NEG, ...PSYCH, ...DEGR
 
 const CLAUSE = /[，。！？；、,.!?;\n]+/;
 
+// ---- 缺詞處理（v0.18）：語料庫沒有的詞 ----
+// 1. 異體字換成收錄的寫法（姐→姊）；2. 整個詞的每個字都有 → 拆開比（住校以外，例如 住/學校 由 AI 給）；
+// 3. 還是有字沒收錄 → 整個詞變「字卡」（手譯員停下來把字打在畫面上），不要只比出半個詞（弟兄 → 只比「兄」會誤會）。
+// 「整個詞」用瀏覽器內建的中文斷詞（Intl.Segmenter）找：沒收錄的字所在的那個詞，連同裡面已收錄的單字一起當字卡。
+const SEG = (() => { try { return new Intl.Segmenter('zh-TW', { granularity: 'word' }); } catch { return null; } })();
+const normVar = (s, have) => [...s].map(c => !have.has(c) && VAR[c] && have.has(VAR[c]) ? VAR[c] : c).join('');
+const JUNK = /^[\s，。！？；、,.!?;:：「」『』（）()…—~～\-]*$/;
+/** tokenize 加上缺詞處理：沒收錄的 → {text, word: text, known: false, card: true} */
+export function smartTokenize(text, vocab, aliases = {}, have = new Set(vocab)) {
+  text = normVar(text, have);
+  const toks = tokenize(text, vocab, aliases);
+  // 每個 token 在原文的位置
+  let pos = 0;
+  for (const t of toks) { const i = text.indexOf(t.text, pos); t.a = i < 0 ? pos : i; t.b = t.a + t.text.length; pos = t.b; }
+  const words = SEG ? [...SEG.segment(text)].filter(w => w.isWordLike).map(w => [w.index, w.index + w.segment.length]) : [];
+  const out = [];
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    if (t.known) { out.push(t); continue; }
+    // 沒收錄的字所在的詞（可能跨好幾個 token）→ 吃掉詞裡面已收錄的「單字」token
+    let A = t.a, B = t.b;
+    for (const [a, b] of words) if (a < t.b && b > t.a) { A = Math.min(A, a); B = Math.max(B, b); }
+    while (out.length && out[out.length - 1].known && out[out.length - 1].text.length === 1 && out[out.length - 1].a >= A) { const p = out.pop(); A = Math.min(A, p.a); }
+    let j = i + 1;
+    while (j < toks.length && (!toks[j].known || toks[j].text.length === 1) && toks[j].b <= B) j++;
+    const prevEnd = out.length ? out[out.length - 1].b : 0;
+    let a = Math.max(Math.min(A, t.a), prevEnd), b = Math.max(t.b, j > i + 1 ? toks[j - 1].b : t.b);
+    // 斷詞也不認得、只剩一個沒收錄的字（召會 → 召／會）：跟旁邊的單字湊成兩個字的詞
+    const one = x => x && x.known && x.text.length === 1 && !DROP.has(x.text) && /\p{Script=Han}/u.test(x.text);
+    if (b - a === 1 && /\p{Script=Han}/u.test(text[a])) {
+      if (one(toks[j]) && toks[j].a === b) { b = toks[j].b; j++; }
+      else if (one(out[out.length - 1]) && out[out.length - 1].b === a) a = out.pop().a;
+    }
+    const txt = text.slice(a, b).replace(/[\s，。！？；、,.!?;:：「」『』（）()]/g, '');
+    const v = txt && variants(txt).find(x => have.has(x));            // 整個詞的異體字有收錄（姐妹 → 姊妹）
+    if (v) out.push({ text: txt, word: aliases[v] || v, known: true, a, b });
+    else if (txt && !JUNK.test(txt)) out.push({ text: txt, word: txt, known: false, card: true, a, b });
+    i = j - 1;
+  }
+  return out.map(({ a, b, ...t }) => t);
+}
+
 /**
  * @param {string} text 中文句子
  * @param {string[]} vocab 語料庫有的詞（含同義詞）
@@ -34,10 +76,10 @@ export function toGloss(text, vocab, aliases = {}) {
   const tokens = [], clauses = []; let question = /[?？嗎]\s*$/.test(text.trim()) || /[什誰哪幾為怎]/.test(text);
   for (const c of text.split(CLAUSE)) {
     if (!c.trim()) continue;
-    const raw = tokenize(c, segVocab, al).map(t => ({ ...t, word: t.word || t.text }));
+    const raw = smartTokenize(c, segVocab, al, have).map(t => ({ ...t, word: t.word || t.text }));
     const out = reorder(raw, c);
     clauses.push(out.map(t => t.word));
-    for (const t of out) tokens.push({ text: t.text, word: t.word, known: have.has(t.word) });
+    for (const t of out) tokens.push({ text: t.text, word: t.word, known: have.has(t.word), ...(t.card ? { card: true } : {}) });
   }
   return { tokens, question, clauses };
 }
@@ -141,7 +183,10 @@ export function mapGloss(gloss, vocab, aliases = {}) {
     let w = aliases[g] || g;
     if (!have.has(w)) w = variants(w).find(v => have.has(v)) || w;   // 異體字：宣布→宣佈
     if (have.has(w)) { out.push({ text: g, word: w, known: true }); continue; }
-    for (const t of tokenize(g, vocab, aliases)) out.push({ text: t.text, word: t.word || t.text, known: !!t.known });
+    // 每個字都有 → 拆開比；有字沒收錄 → 整個詞當字卡
+    const parts = tokenize(normVar(g, have), vocab, aliases);
+    if (parts.length && parts.every(t => t.known)) for (const t of parts) out.push({ text: t.text, word: t.word || t.text, known: true });
+    else if (!JUNK.test(g)) out.push({ text: g, word: g, known: false, card: true });
   }
   return out;
 }

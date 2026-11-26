@@ -1,7 +1,7 @@
 // avatar2d.js — 2D 插畫風手語人像（男女各兩款），臉部表情由骨架的臉部點驅動
 // 表情：眉毛上揚／下壓、皺眉、眼睛睜大／瞇眼／眨眼、嘴巴張合、嘴角上揚／下垂、頭部傾斜與轉向。
 // 數值校正：用語料庫 2 萬多格臉部資料的中位數當「平常臉」，變化量放大一點，手語的臉部語法才看得清楚。
-import { OFF, PI, FI, has } from './core.js';
+import { OFF, PI, FI, has, BS } from './core.js';
 
 export const STYLES = {
   f1: { name: '女・長髮', skin: '#F6D3BA', shade: '#E2AE92', hair: '#3A2721', hair2: '#563A30', shirt: '#2C7F7B', shirt2: '#22625F', collar: '#FFFFFF', lip: '#D9707A', iris: '#4A2E22', hairStyle: 'long', cuff: '#FFFFFF' },
@@ -16,7 +16,28 @@ const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 // ---- 臉部點 → 表情參數（-1～1 左右），每個畫布各自平滑，避免抖動 ----
 const smooth = new WeakMap();
 const NEUTRAL = { expr: { brow: 0, browL: 0, browR: 0, furrow: 0, eyeL: 0.85, eyeR: 0.85, mouth: 0, smile: 0, yaw: 0 } };
+// v0.18：Colab 重抽的語料有 52 個表情係數（f.bs），直接換算成同樣的參數（比臉部點準：不受頭轉、手擋臉影響）
+function bsExpr(f) {
+  const b = f.bs, g = n => b[BS[n]] || 0;
+  let yaw = 0;
+  if (has(f, F(FI.noseTip))) {
+    const x = i => f[F(i) * 3], exL = (x(FI.lEye[0]) + x(FI.lEye[1])) / 2, exR = (x(FI.rEye[0]) + x(FI.rEye[1])) / 2;
+    yaw = clamp((x(FI.noseTip) - (exL + exR) / 2) / (Math.abs(exL - exR) || 1e-3) / 0.12, -1, 1);
+  }
+  // 平常臉的基準＝辭典例句 1.6 萬格的中位數（示範者平常眼睛就半瞇：eyeBlink 0.38、eyeSquint 0.42；browDown 0.08）
+  const brow = s => clamp((g('browOuterUp' + s) - 0.03 + 0.6 * (g('browInnerUp') - 0.03)) * 2.2 - (g('browDown' + s) - 0.08) * 2.5, -1.2, 1.6);
+  const eye = s => clamp(0.95 - Math.max(0, g('eyeBlink' + s) - 0.38) * 1.6 - Math.max(0, g('eyeSquint' + s) - 0.42) * 0.4 + g('eyeWide' + s) * 1.5, 0, 1.5);
+  return {
+    browL: brow('Left'), browR: brow('Right'),
+    furrow: clamp((g('browDownLeft') + g('browDownRight') - 0.16) * 1.6, 0, 1.3),
+    eyeL: eye('Left'), eyeR: eye('Right'),
+    mouth: clamp(g('jawOpen') * 2, 0, 1.2),
+    smile: clamp((g('mouthSmileLeft') + g('mouthSmileRight')) * 1.25 - (g('mouthFrownLeft') + g('mouthFrownRight')) * 1.5, -1.2, 1.2),
+    yaw,
+  };
+}
 export function faceExpr(f) {
+  if (f.bs) return bsExpr(f);
   if (!has(f, F(FI.noseTip))) return null;
   const x = i => f[F(i) * 3], y = i => f[F(i) * 3 + 1];
   const avgY = a => a.reduce((s, i) => s + y(i), 0) / a.length;

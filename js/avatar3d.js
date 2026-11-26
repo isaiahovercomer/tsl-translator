@@ -454,7 +454,7 @@ export class Avatar3D {
       // Colab 重抽的語料：直接用 52 個表情係數（ARKit 名稱）。VRoid 表情較少，對到最接近的，再稍微放大讓表情看得清楚
       const b = f.bs, c = x => Math.max(0, Math.min(1, x)), g = n => b[BS[n]];
       tgt.jaw = c(g('jawOpen') * 1.2);
-      tgt.blinkL = c((g('eyeBlinkLeft') - 0.15) * 1.4); tgt.blinkR = c((g('eyeBlinkRight') - 0.15) * 1.4);
+      tgt.blinkL = c((g('eyeBlinkLeft') - 0.38) * 1.7); tgt.blinkR = c((g('eyeBlinkRight') - 0.38) * 1.7);   // 平常臉 eyeBlink 約 0.38（辭典例句中位數）
       tgt.browUpL = c((g('browOuterUpLeft') + g('browInnerUp') * 0.5) * 1.3); tgt.browUpR = c((g('browOuterUpRight') + g('browInnerUp') * 0.5) * 1.3);
       tgt.browIn = c(g('browInnerUp') * 1.3);
       tgt.browDownL = c(g('browDownLeft') * 1.5); tgt.browDownR = c(g('browDownRight') * 1.5);

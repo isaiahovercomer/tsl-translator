@@ -11,14 +11,22 @@ from pathlib import Path
 
 
 def empty():
-    return {'v': 1, 'updated': None, 'files': 0, 'samples': 0, 'logs': 0, 'signers': {}, 'words': {}}
+    return {'v': 1, 'updated': None, 'files': 0, 'samples': 0, 'logs': 0, 'signers': {}, 'words': {}, 'missing': {}}
 
 
 def add(st, body):
     who, n = body.get('signer'), 0
     for s in body.get('samples', []):
         if s.get('kind') == 'log':
-            st['logs'] += 1; continue
+            miss = (s.get('log') or {}).get('miss')
+            if isinstance(miss, dict):   # 說話時手譯員比不出來的詞（v0.18）
+                m = st.setdefault('missing', {})
+                for w, k in miss.items():
+                    if isinstance(w, str) and len(w) <= 12:
+                        m[w] = m.get(w, 0) + min(50, max(0, int(k or 0)))
+            else:
+                st['logs'] += 1
+            continue
         if not s.get('word'):
             continue
         n += 1; st['samples'] += 1

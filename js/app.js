@@ -5,15 +5,16 @@ import { Camera, extractFromFile, drawOverlay, preloadLandmarker } from './visio
 import { ENV, escapeInApp, permState, permHelpHtml, mediaErr, initGuide, openGuide, guided, canInstall, install, onInstallChange } from './guide.js';
 escapeInApp();   // 在 LINE 裡打開：自動改用手機瀏覽器（LINE 內建瀏覽器不能用鏡頭和麥克風）
 import * as store from './store.js';
-import { toGloss, aiGloss, mapGloss, aiFluent, aiPick } from './gloss.js';
-import { SCENES, SCENE_ORDER, sceneWords } from './scenes.js';
-import { initCollect, addLog, addCorrection, recStats, enableHelp, helpOn } from './collect.js';
+import { toGloss, aiGloss, mapGloss, aiFluent, aiPick, smartTokenize } from './gloss.js';
+import { SCENES, SCENE_ORDER, sceneWords, CORE } from './scenes.js';
+import { initCollect, addLog, addCorrection, recStats, enableHelp, helpOn, noteMissing } from './collect.js';
 import { makeSpotter } from './spot-client.js';
-import { MODEL_VER } from './model.js';
+import { MODEL_VER, ORT_FILES } from './model.js';
+import { prefetch, markOffline, offlineInfo, onWifi } from './offline.js';
 import { CloudSTT } from './stt.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.17.0';
+const VERSION = '0.18.0';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -134,7 +135,7 @@ let lastTokens = [];
 let glossSeq = 0;
 async function glossTokens(text) {
   const vocab = [...byWord.keys()], al = aliasMap();
-  if (S.glossMode === 'word') return { toks: tokenize(text, vocab, al), how: '' };
+  if (S.glossMode === 'word') return { toks: smartTokenize(text, vocab, al), how: '' };
   const rule = toGloss(text, vocab, al);
   if (S.glossMode === 'ai' && navigator.onLine !== false) {
     const g = await aiGloss(text, rule.tokens.filter(t => t.known).map(t => t.word));
@@ -142,17 +143,20 @@ async function glossTokens(text) {
   }
   return { toks: rule.tokens, how: '規則手語語序：' + rule.tokens.map(t => t.word).join('／') };
 }
+// 一個詞要用哪一筆語料：設定的分類優先；本機錄的優先（通常比較清楚），其次手部偵測品質好的
+function bestSample(word) {
+  const all = byWord.get(word) || [], pref = all.filter(s => catOf(s) === S.prefCat), list = pref.length ? pref : all;
+  return [...list].sort((a, b) => (b.shared ? 0 : 1) - (a.shared ? 0 : 1) || (b.q || 0.5) - (a.q || 0.5))[0];
+}
 // 一句 → 準備好要比的資料（詞序、骨架）
 async function prepare(text) {
   const { toks, how } = await glossTokens(text);
-  const picks = toks.filter(t => t.known).map(t => {
-    const all = byWord.get(t.word), pref = all.filter(s => catOf(s) === S.prefCat), list = pref.length ? pref : all;
-    // 本機錄的優先（通常比較清楚），其次手部偵測品質好的
-    const best = [...list].sort((a, b) => (b.shared ? 0 : 1) - (a.shared ? 0 : 1) || (b.q || 0.5) - (a.q || 0.5));
-    return { word: t.word, s: best[0] };
-  });
-  const loaded = await Promise.all(picks.map(p => store.loadSample(p.s).catch(() => null)));
-  const items = picks.filter((p, i) => loaded[i]).map(p => ({ word: p.word, frames: sampleFrames(p.s), aspect: sampleAspect(p.s) }));
+  // 照詞序：有語料的比出來；沒有的（字卡）手譯員停下來把字打在畫面上（v0.18）
+  const picks = toks.filter(t => (t.known && byWord.has(t.word)) || t.card).map(t => t.known ? { word: t.word, s: bestSample(t.word) } : { word: t.text, card: true });
+  const loaded = await Promise.all(picks.map(p => p.card ? true : store.loadSample(p.s).catch(() => null)));
+  const items = picks.filter((p, i) => loaded[i]).map(p => p.card ? { word: p.word, card: true } : { word: p.word, frames: sampleFrames(p.s), aspect: sampleAspect(p.s) });
+  const miss = picks.filter(p => p.card).map(p => p.word);
+  if (miss.length) noteMissing(miss);   // 常缺的詞 → 收集模式「說話時缺的詞」清單
   return { text, toks, how, items };
 }
 function showEntry(r) {
@@ -160,7 +164,7 @@ function showEntry(r) {
   lastTokens = r.toks;
   $('speechChips').innerHTML = r.toks.map((t, i) => t.known
     ? `<span class="chip known" data-i="${i}">${esc(t.text)}${t.word !== t.text ? `<small>${esc(t.word)}</small>` : ''}</span>`
-    : `<a class="chip" data-i="${i}" href="${dictUrl(t.text)}" target="_blank" rel="noopener" title="語料庫還沒有，點一下查台灣手語線上辭典">${esc(t.text)}</a>`).join('');
+    : `<a class="chip${t.card ? ' card' : ''}" data-i="${i}" href="${dictUrl(t.text)}" target="_blank" rel="noopener" title="語料庫還沒有（手譯員會把字打在畫面上），點一下查台灣手語線上辭典">${t.card ? '✍' : ''}${esc(t.text)}</a>`).join('');
 }
 
 // ---- 播放佇列：連續／即時（只比最新一句）／一句一句（按「下一句」或點人像）----
@@ -201,7 +205,7 @@ async function playText(text) {
 function highlightWord(w) {
   document.querySelectorAll('#speechChips .chip').forEach(c => c.classList.remove('cur'));
   if (!w) return;
-  const c = [...document.querySelectorAll('#speechChips .chip.known')].find(c => lastTokens[c.dataset.i].word === w);
+  const c = [...document.querySelectorAll('#speechChips .chip.known, #speechChips .chip.card')].find(c => lastTokens[c.dataset.i].word === w);
   if (c) c.classList.add('cur');
 }
 $('btnType').onclick = () => playText($('typeText').value);
@@ -822,6 +826,35 @@ loadCorpus().then(applyAvatar);
 // 收集模式（新增語料頁）
 // 幫忙改進辨識（設定頁）
 $('recLog').checked = !!S.recLog; $('recLog').onchange = e => { S.recLog = e.target.checked; saveS(); };
+// ---------- 離線準備（v0.18）----------
+// 情境詞（基本詞＋寒暄／聚會／召會）的手語骨架、辨識特徵、辨識模型 → 快取；full＝連 MediaPipe 手勢模型一起
+const sceneList = () => [...new Set([CORE, ...['greet', 'meeting', 'church'].map(k => SCENES[k].words || '')].join(' ').split(/\s+/).filter(w => w && byWord.has(w)))];
+function offlineUrls() {
+  const words = sceneList(), files = new Set();
+  for (const w of words) { const s = bestSample(w); if (s && s.shared && s.file) files.add('corpus/' + s.file); }
+  return { words, urls: ['corpus/index.json', 'corpus/feats.json', `models/${MODEL_VER}/labels.json`, `models/${MODEL_VER}/tsl-recog.int8.onnx`, ...ORT_FILES, ...files] };
+}
+let offlineBusy = false;
+async function goOffline(full, quiet) {
+  if (offlineBusy || !samples.length) return; offlineBusy = true;
+  const { words, urls } = offlineUrls(), el = $('offInfo'), btn = $('btnOffline');
+  if (btn) btn.disabled = true;
+  if (full) try { preloadLandmarker(); } catch {}
+  const r = await prefetch(urls, (d, n, b) => { if (el && !quiet) el.textContent = `下載中 ${d}／${n}（${(b / 1048576).toFixed(1)} MB）…`; });
+  offlineBusy = false; if (btn) btn.disabled = false;
+  if (!r.fail) markOffline(VERSION, words.length, r.bytes);
+  showOffline(r.fail ? `有 ${r.fail} 個檔案沒下載到（網路不穩？），可以再按一次` : null);
+  if (!quiet) toast(r.fail ? '部分沒下載到，可以再按一次' : `離線準備好了：${words.length} 個常用詞`);
+}
+function showOffline(msg) {
+  const o = offlineInfo(), el = $('offInfo'); if (!el) return;
+  el.textContent = msg || (o ? `已準備 ${o.words} 個常用詞（${o.mb} MB，${new Date(o.at).toLocaleDateString('zh-TW')}，版本 ${o.ver}）${o.ver !== VERSION ? '・網站更新過，建議再下載一次' : ''}` : '還沒準備。在有 Wi-Fi 的地方按一次，之後沒網路也能用。');
+}
+$('btnOffline').onclick = () => goOffline(true, false);
+showOffline();
+// 有 Wi-Fi、還沒準備過這一版：開網頁 20 秒後在背景自動下載（不含 MediaPipe 模型，開鏡頭時才載）
+setTimeout(() => { const o = offlineInfo(); if (onWifi() && (!o || o.ver !== VERSION)) goOffline(false, true); }, 20000);
+
 async function showRecStats() {
   const st = await recStats();
   if (!st.sentences) { $('recStats').textContent = '還沒有紀錄（用鏡頭比手語之後會出現）'; return st; }
@@ -831,7 +864,7 @@ async function showRecStats() {
 }
 $('btnRecStats').onclick = showRecStats;
 $('btnRecDl').onclick = async () => { const st = await showRecStats(); if (st.sentences) store.download(`辨識紀錄-${new Date().toISOString().slice(0, 10)}.json`, { kind: 'tsl-reclog', logs: st.logs }); };
-initCollect({ samplesFor: w => (byWord.get(w) || []).filter(s => s.shared), frames: s => sampleFrames(s), aspect: s => sampleAspect(s), toast });
+initCollect({ has: w => byWord.has(w), samplesFor: w => (byWord.get(w) || []).filter(s => s.shared), frames: s => sampleFrames(s), aspect: s => sampleAspect(s), toast });
 $('helpOn').checked = helpOn(); $('helpOn').onchange = e => { enableHelp(e.target.checked); toast(e.target.checked ? '謝謝！紀錄會自動上傳' : '已關閉上傳'); };
 showRecStats();
-window.__tsl = { useEngine, spot, showRecStats, applyScene, enterF2F, exitF2F, endSentence, get logLines() { return logLines; }, onSign, attachFeats, glossTokens, enqueue, real, recog, store, get samples() { return samples; }, playText, loadCorpus, openEditor, player, preview };
+window.__tsl = { goOffline, offlineUrls, useEngine, spot, showRecStats, applyScene, enterF2F, exitF2F, endSentence, get logLines() { return logLines; }, onSign, attachFeats, glossTokens, enqueue, real, recog, store, get samples() { return samples; }, playText, loadCorpus, openEditor, player, preview };
