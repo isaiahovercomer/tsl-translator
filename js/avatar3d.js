@@ -42,6 +42,13 @@ function loadGLTF(url) {
   return cache.get(url);
 }
 
+// 手指關節限制（實驗，預設關閉）：[最小彎曲, 最大彎曲, 最大側擺]（弧度）。網址加 #fingerlimit 打開，或 #flim=9 個數字自訂。
+// tools/eval_fingers.py 量過：跟骨架資料比，加限制反而差（平均 18.6° → 24.9°），因為誤差主要來自資料本身（MediaPipe 手指深度），
+// 不是套到骨頭的換算。要更準得換更好的手部模型重新抽骨架（見 docs/PLAN-colab.md）。
+let FLIM = null;
+if (typeof location !== 'undefined' && /fingerlimit/.test(location.hash)) FLIM = [[-0.35, 1.6, 0.35], [0, 1.9, 0], [0, 1.4, 0]];
+if (typeof location !== 'undefined') { const m = location.hash.match(/flim=([\d.,-]+)/); if (m) { const v = m[1].split(',').map(Number); FLIM = [[v[0], v[1], v[2]], [v[3], v[4], v[5]], [v[6], v[7], v[8]]]; } }
+const PALM_SIGN = typeof location !== 'undefined' && /flip/.test(location.hash) ? -1 : 1;
 const FINGERS = [
   ['Thumb', [1, 2, 3, 4]], ['Index', [5, 6, 7, 8]], ['Middle', [9, 10, 11, 12]],
   ['Ring', [13, 14, 15, 16]], ['Pinky', [17, 18, 19, 20]],
@@ -377,12 +384,7 @@ export class Avatar3D {
       const tw = twist(delta, axis);
       fore.quaternion.multiply(new THREE.Quaternion().slerp(tw, 0.5)); fore.updateMatrixWorld(true);
       this.setWorld(hand, target, handPrev);
-      for (const [name, j] of FINGERS) {
-        for (let k = 0; k < 3; k++) {
-          const bone = b[side + 'Hand' + name + (k + 1)];
-          if (bone) this.aim(bone, null, this.dir(f, off + j[k], off + j[k + 1], ZK_HAND));
-        }
-      }
+      this.poseFingers(f, side, off, hand, mid, idx, pin);
     } else {
       // 沒有手的資料：手跟著前臂、手指自然微彎
       this.setWorld(hand, hand.getWorldQuaternion(_q2), handPrev, 0.3);
@@ -401,6 +403,45 @@ export class Avatar3D {
           const t = curl[k] * (k + 1);
           this.aim(bone, null, d.multiplyScalar(Math.cos(t)).add(palm.clone().multiplyScalar(Math.sin(t))), 0.3, prev);
         }
+      }
+    }
+  }
+
+  // 手指（v0.13）：照骨架方向，但加上關節限制——手指只能往掌心彎、第二三節不能側彎或往後折。
+  // MediaPipe 手指的深度（z）不準，彎進掌心的手指常被看成「朝鏡頭伸直」或往手背翻；限制後彎曲的手指才會像握起來。
+  poseFingers(f, side, off, hand, mid, idx, pin) {
+    const b = this.b, L = side === 'Left';
+    const hp = hand.getWorldPosition(new THREE.Vector3());
+    const fwdA = mid.getWorldPosition(new THREE.Vector3()).sub(hp).normalize();
+    const acrossA = idx.getWorldPosition(new THREE.Vector3()).sub(pin.getWorldPosition(new THREE.Vector3())).normalize();
+    const palmN = new THREE.Vector3().crossVectors(fwdA, acrossA).multiplyScalar((L ? 1 : -1) * PALM_SIGN).normalize();   // 往掌心（手指彎的方向）
+    for (const [name, j] of FINGERS) {
+      let p = null, h = null, sgn = 1, pipFlex = 0;
+      for (let k = 0; k < 3; k++) {
+        const bone = b[side + 'Hand' + name + (k + 1)];
+        if (!bone) continue;
+        const prev = this.reset(bone);
+        const d0 = this.dir(f, off + j[k], off + j[k + 1], ZK_HAND);
+        if (!d0 || d0.lengthSq() < 1e-12 || name === 'Thumb' || !FLIM) { this.aim(bone, null, d0, SMOOTH, prev); continue; }
+        const d = d0.normalize();
+        if (k === 0) {
+          p = this.boneDir(bone);
+          h = acrossA.clone().addScaledVector(p, -acrossA.dot(p)).normalize();
+          const m0 = palmN.clone().addScaledVector(p, -palmN.dot(p)).addScaledVector(h, -palmN.dot(h)).normalize();
+          sgn = new THREE.Vector3().crossVectors(h, p).dot(m0) >= 0 ? 1 : -1;
+        }
+        const m = new THREE.Vector3().crossVectors(h, p).multiplyScalar(sgn).normalize();
+        const dp = d.dot(p), dm = d.dot(m), da = d.dot(h);
+        const [f0, f1, a1] = FLIM[k];
+        let raw = Math.atan2(dm, dp);
+        if (raw < -Math.PI / 2) raw += Math.PI * 2;   // 往後超過 90°＝其實是彎過頭（握拳），不是往手背折
+        let flex = Math.min(f1, Math.max(f0, raw));
+        if (k === 1) pipFlex = flex;
+        if (k === 2) flex = Math.min(f1, Math.max(f0, flex * 0.5 + pipFlex * 0.7 * 0.5));   // 第三節大約跟著第二節彎（比較穩）
+        const abd = Math.min(a1, Math.max(-a1, Math.atan2(da, Math.hypot(dp, dm))));
+        const t = p.clone().multiplyScalar(Math.cos(flex)).addScaledVector(m, Math.sin(flex)).multiplyScalar(Math.cos(abd)).addScaledVector(h, Math.sin(abd));
+        this.aim(bone, null, t, SMOOTH, prev);
+        p = t.normalize();
       }
     }
   }

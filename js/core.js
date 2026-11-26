@@ -196,21 +196,117 @@ export function dtw(A, B, band = 4) {
 }
 
 // ---- 辨識器：每個詞取最近的樣本（k 近鄰） ----
+// 情境（setFilter）：只在指定的詞裡找（詞或同義詞在集合裡就算）。詞多時先用粗略距離挑 PRE 個樣本，再算 DTW。
+const PRE = 60, COARSE = [0, 3, 5, 8, 10, 13, 15];
+function coarse(A, B) { let s = 0; for (const i of COARSE) { const a = A[i], b = B[i]; for (let k = 0; k < D; k++) { const d = a[k] - b[k]; s += d * d; } } return s; }
 export class Recognizer {
-  constructor() { this.items = []; }
+  constructor() { this.items = []; this.filter = null; this.pool = []; }
   // 有 _feat（預先算好的特徵，共用語料）就直接用；本機語料現算
   setSamples(samples) {
-    this.items = samples.filter(s => s._feat || s.data).map(s => ({ word: s.word, id: s.id, feat: s._feat || seqFeat(sampleFrames(s)) }));
+    this.items = samples.filter(s => s._feat || s.data).map(s => ({ word: s.word, syn: s.syn || [], id: s.id, feat: s._feat || seqFeat(sampleFrames(s)) }));
+    this.setFilter(this.filter);
   }
-  get words() { return [...new Set(this.items.map(i => i.word))]; }
-  classify(frames, topN = 3) {
-    if (!this.items.length || frames.length < 4) return [];
-    const q = seqFeat(frames); const best = new Map();
-    for (const it of this.items) {
+  /** set: Set<詞>，null＝全部 */
+  setFilter(set) {
+    this.filter = set && set.size ? set : null;
+    this.pool = this.filter ? this.items.filter(it => this.filter.has(it.word) || it.syn.some(w => this.filter.has(w))) : this.items;
+  }
+  get words() { return [...new Set(this.pool.map(i => i.word))]; }
+  // all=true：不管情境，全部詞彙都找（錄製／切段頁用）
+  classify(frames, topN = 3, all = false) {
+    if (!(all ? this.items : this.pool).length || frames.length < 4) return [];
+    return this.classifyFeat(seqFeat(frames), topN, all);
+  }
+  classifyFeat(q, topN = 3, all = false) {
+    let pool = all ? this.items : this.pool;
+    if (pool.length > PRE * 1.5) pool = pool.map(it => [coarse(q, it.feat), it]).sort((a, b) => a[0] - b[0]).slice(0, PRE).map(x => x[1]);
+    const best = new Map();
+    for (const it of pool) {
       const d = dtw(q, it.feat);
       if (!best.has(it.word) || d < best.get(it.word)) best.set(it.word, d);
     }
     return [...best].map(([word, dist]) => ({ word, dist })).sort((a, b) => a.dist - b.dist).slice(0, topN);
+  }
+}
+
+// ---- 邊比邊找詞（v0.13）：不用等手放下 ----
+// 手舉起來就開始累積；每 STEP 格試一次「從上一個切點到現在」這段（也試略過開頭 3、6 格的過渡動作）。
+// 一段的最佳距離到了最低點、之後越比越不像（代表這個詞比完了）→ 在最低點切開送出前 3 個候選。
+// 手停住 STILL 格（詞和詞之間稍停）或手放下 → 也切。onWord(cands, frames)；onRest() = 手放下。
+export class Spotter {
+  constructor(recog, onWord, opt = {}) {
+    this.recog = recog; this.onWord = onWord; this.onRest = opt.onRest || (() => {});
+    this.threshold = opt.threshold || 1.4;
+    // 可調參數（tools/test_spotter.mjs 調過）：稍停幾格就切、最低點要多像、之後變差多少、等幾格
+    this.P = { still: 5, stillMax: 10, stillBest: 0.8, best: 0.6, rise: 1.5, after: 9, min: 12, ...(opt.params || {}) };
+    this.buf = []; this.pre = []; this.on = false; this.idle = 0; this.still = 0; this.n = 0; this.best = null;
+    this.moving = false;
+  }
+  reset() { this.buf = []; this.best = null; this.n = 0; this.still = 0; }
+  push(f) {
+    const ref = bodyRef(f); const act = handsActive(f, ref);
+    if (!this.on) {
+      this.pre.push(f); if (this.pre.length > 3) this.pre.shift();
+      if (act) { this.on = true; this.buf = [...this.pre]; this.idle = 0; this.still = 0; this.best = null; this.n = 0; }
+      return;
+    }
+    this.buf.push(f); this.n++; this.frameNo = (this.frameNo || 0) + 1;
+    const prev = this.buf[this.buf.length - 2];
+    const mv = prev ? motion(prev, f, ref) : 1;
+    this.moving = mv >= 0.012;
+    this.still = this.moving ? 0 : this.still + 1;
+    this.idle = act ? 0 : this.idle + 1;
+    if (this.still === 0) this.held = false;
+    if (this.held && this.idle < 5) { if (this.buf.length > 4) this.buf = this.buf.slice(-4); return; }   // 切完還舉著不動：不累積
+    if (this.idle >= 5) {                       // 手放下：剩下的送出
+      this.cut(this.buf.length - 4); this.on = false; this.pre = []; this.held = false; this.onRest(); return;
+    }
+    // 詞和詞之間稍停：這段像一個完整的詞才切（手語詞本身也常有停頓）；停更久（stillMax）就一定切
+    if (this.buf.length >= 10 && (this.still === this.P.still || this.still === this.P.stillMax)) {
+      const fr = this.buf.slice(0, -3), c = this.still === this.P.stillMax ? null : this.recog.classify(fr, 1);
+      const lim = this.threshold * this.P.stillBest * (fr.length < 12 ? 0.5 : 1);   // 很短的一段（多半是手舉起來的過渡動作）要更像才算
+      if (!c || (c[0] && c[0].dist <= lim)) { this.cut(this.buf.length - 3); this.held = true; return; }
+    }
+    if (this.buf.length > FPS * 5) { this.cut(this.buf.length); return; }                    // 太長：硬切
+    if (this.P.rise && this.n % 3 === 0 && this.buf.length >= this.P.min && this.still < 3) this.probe();
+  }
+  // 試現在這段；記住最低點；最低點之後連續變差 → 切在最低點
+  probe() {
+    const L = this.buf.length; let cur = null;
+    for (const s of [0, 3, 6]) {
+      if (L - s < this.P.min - 1) continue;
+      const fr = this.buf.slice(s); if (!fr.some(f => has(f, OFF.lh) || has(f, OFF.rh))) continue;
+      const c = this.recog.classify(fr, 3);
+      if (c.length && (!cur || c[0].dist < cur.cands[0].dist)) cur = { cands: c, s, e: L };
+    }
+    if (!cur) return;
+    const th = this.threshold;
+    if (!this.best || cur.cands[0].dist <= this.best.cands[0].dist) { this.best = cur; return; }
+    // 比完一個詞：最低點夠像、之後至少 6 格（0.4 秒）都比最低點差 12% 以上
+    if (this.best.cands[0].dist <= th * this.P.best && L - this.best.e >= this.P.after && cur.cands[0].dist > this.best.cands[0].dist * this.P.rise) {
+      const b = this.best;
+      this.emit(b.cands, this.buf.slice(b.s, b.e));
+      this.buf = this.buf.slice(Math.max(0, b.e - 2)); this.best = null; this.n = 0;
+    }
+  }
+  // 切在 end：之前比過最低點且還沒送出 → 用它；不然整段辨識
+  cut(end) {
+    const fr = this.buf.slice(0, Math.max(0, end));
+    this.buf = this.buf.slice(Math.max(0, end - 2)); this.n = 0;
+    const b = this.best; this.best = null;
+    if (fr.length < 6 || !fr.some(f => has(f, OFF.lh) || has(f, OFF.rh))) return;
+    const c = this.recog.classify(fr, 3);
+    const pick = b && b.e <= fr.length + 2 && b.cands[0].dist < (c[0] ? c[0].dist : 9) ? b : { cands: c, s: 0, e: fr.length };
+    if (pick.cands.length) this.emit(pick.cands, fr.slice(pick.s, pick.e));
+  }
+  flush() { if (this.on) { this.cut(this.buf.length); this.on = false; } }
+  // 同一個詞連續比兩次（手語常重複動作）→ 只算一次
+  emit(cands, frames) {
+    if (frames.length < 6) return;
+    this.t = (this.t || 0) + 1;
+    if (this.last && this.last.word === cands[0].word && this.frameNo - this.last.at < 30) { this.last.at = this.frameNo; return; }
+    this.last = { word: cands[0].word, at: this.frameNo };
+    this.onWord(cands, frames);
   }
 }
 

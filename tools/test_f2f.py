@@ -13,6 +13,9 @@ def handle(route):
         path = url[len(BASE):].split('?')[0].split('#')[0] or 'index.html'
         if path == 'api/fluent':
             body = json.loads(route.request.post_data or '{}')
+            if 'cands' in body:   # v0.13 AI 挑詞：第二段候選「游泳／跑步」挑游泳
+                cands.append(body)
+                return route.fulfill(status=200, content_type='application/json', body=json.dumps({'text': '我會游泳', 'pick': ['我', '游泳', '會'], 'model': 'mock'}))
             g = body.get('gloss', [])
             return route.fulfill(status=200, content_type='application/json', body=json.dumps({'text': '我會游泳' if g == ['我', '游泳', '會'] else '（AI）' + ''.join(g), 'model': 'mock'}))
         if path == 'api/gloss':
@@ -24,6 +27,7 @@ def handle(route):
     return route.continue_()
 
 errors = []
+cands = []
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--use-angle=swiftshader', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--ignore-certificate-errors'])
     ctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True, permissions=['camera', 'microphone'])
@@ -49,16 +53,23 @@ with sync_playwright() as p:
     pg.wait_for_timeout(1200)
     pg.screenshot(path=str(OUT / '2_f2f_signing.png'))
     # 手語 → 逐字稿＋AI 通順（模擬辨識出三個詞）
-    pg.evaluate("""() => { const t = window.__tsl; t.recog.classify = (() => { const q = ['我','游泳','會']; let i = 0; return () => [{ word: q[i++ % 3], dist: 0.5 }]; })();
-      for (let k = 0; k < 3; k++) t.onSign([]); }""")
+    pg.evaluate("""() => { const t = window.__tsl; const q = [[['我',.5],['你',.6]], [['跑步',.5],['游泳',.55],['走',1.9]], [['會',.4]]];
+      for (const c of q) t.onSign([], c.map(([word, dist]) => ({ word, dist }))); }""")
     pg.wait_for_timeout(300)
     cur = pg.inner_text('#f2fSign')
-    assert '我游泳會' in cur, cur
+    assert '我/跑步/會' in cur, cur
+    pg.screenshot(path=str(OUT / '3a_f2f_cands.png'))
     pg.evaluate("window.__tsl.endSentence()")
     pg.wait_for_timeout(500)
     sign = pg.inner_text('#f2fSign')
     assert '我會游泳' in sign, sign
     assert pg.evaluate("window.__tsl.logLines.at(-1).t") == '我會游泳'
+    assert cands and cands[-1]['cands'] == [['我', '你'], ['跑步', '游泳', '走'], ['會']], cands
+    print('AI 挑詞送出：', cands[-1])
+    assert pg.evaluate("window.__tsl.logLines.at(-1).g") == '我/游泳/會'
+    # 情境按鈕：點一下換下一個
+    before = pg.inner_text('#f2fScene'); pg.click('#f2fScene'); pg.wait_for_timeout(200)
+    print('情境：', before, '→', pg.inner_text('#f2fScene')); assert before != pg.inner_text('#f2fScene')
     pg.screenshot(path=str(OUT / '3_f2f_sign_fluent.png'))
     # 開始（假鏡頭）
     pg.click('#f2fGo')

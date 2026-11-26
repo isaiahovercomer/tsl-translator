@@ -1,22 +1,23 @@
 // app.js — 介面與流程
-import { FPS, CATS, catOf, decodeFeat, Recognizer, Segmenter, tokenize, makeSample, sampleFrames, sampleAspect, estimateAspect, decodeFrames, handsActive as handsUp } from './core.js';
+import { FPS, CATS, catOf, decodeFeat, Recognizer, Segmenter, Spotter, tokenize, makeSample, sampleFrames, sampleAspect, estimateAspect, decodeFrames, handsActive as handsUp } from './core.js';
 import { AvatarPlayer, normalizeSeq, drawAvatar } from './avatar.js';
 import { Camera, extractFromFile, drawOverlay, preloadLandmarker } from './vision.js';
 import { ENV, escapeInApp, permState, permHelpHtml, mediaErr, initGuide, openGuide, guided, canInstall, install, onInstallChange } from './guide.js';
 escapeInApp();   // 在 LINE 裡打開：自動改用手機瀏覽器（LINE 內建瀏覽器不能用鏡頭和麥克風）
 import * as store from './store.js';
-import { toGloss, aiGloss, mapGloss, aiFluent } from './gloss.js';
+import { toGloss, aiGloss, mapGloss, aiFluent, aiPick } from './gloss.js';
+import { SCENES, SCENE_ORDER, sceneWords } from './scenes.js';
 import { CloudSTT } from './stt.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.12.1';
+const VERSION = '0.13.0';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms = 2600) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), ms); }
 
 // ---------- 設定 ----------
-const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝', avatarKind: 'vrm-f1', avatarUrl: '', prefCat: 'church', addCat: 'general', glossMode: 'ai', playMode: 'queue', speakMode: 'word', sttEngine: 'cloud', f2fSize: 1 };
+const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝', avatarKind: 'vrm-f1', avatarUrl: '', prefCat: 'church', addCat: 'general', glossMode: 'ai', playMode: 'queue', speakMode: 'smart', scene: 'greet', sttEngine: 'cloud', f2fSize: 1 };
 let S = { ...DEF };
 try { S = { ...DEF, ...JSON.parse(localStorage.getItem('tsl-settings') || '{}') }; } catch {}
 // v0.5：預設改成 2D 插畫人像（之前選 3D 寫實的，換成同性別的 2D）
@@ -27,6 +28,8 @@ if (!S.v7) { S.avatarKind = { '2d-f1': 'vrm-f1', '2d-f2': 'vrm-f2', '2d-m1': 'vr
 if (S.v7 && !S.v8) { const k = S.avatarKind; if (!/^vrm-[fm][123]$/.test(k) && !['2d', 'custom'].includes(k)) S.avatarKind = /(^|-)m(\d|ale|$)/.test(k) ? 'vrm-m3' : 'vrm-f1'; S.v8 = 1; }   // 男：male、biz-m1、2d-m2、vrm-m3-flat…；female 不算
 // v0.7.4：手譯員只留 女（vrm-f1）、男（vrm-m3）
 if (S.v8 && !S.v9) { S.avatarKind = { 'vrm-f2': 'vrm-f1', 'vrm-f3': 'vrm-f1', 'vrm-m1': 'vrm-m3', 'vrm-m2': 'vrm-m3' }[S.avatarKind] || S.avatarKind; S.v9 = 1; }
+// v0.13：手語→語音預設改成「AI 挑詞」（每段留 3 個候選，AI 挑最通順的句子再唸）；加辨識情境
+if (!S.v13) { if (S.speakMode === 'word' || S.speakMode === 'fluent') S.speakMode = 'smart'; S.v13 = 1; }
 const saveS = () => { try { localStorage.setItem('tsl-settings', JSON.stringify(S)); } catch {} };
 saveS();
 const STYLE_KINDS = ['2d-f1', '2d-f2', '2d-m1', '2d-m2'];
@@ -52,7 +55,14 @@ let featsReady = false;
 async function attachFeats() {
   const feats = await store.sharedFeats(); featsReady = true;
   for (const s of samples) if (s.shared && feats[s.id] && !s._feat) s._feat = decodeFeat(feats[s.id]);
-  recog.setSamples(samples.filter(s => s._feat || !s.shared));
+  recog.setSamples(samples.filter(s => s._feat || !s.shared)); applyScene();
+}
+// 情境：只在這個情境常用的詞裡找
+function applyScene() {
+  recog.setFilter(sceneWords(S.scene, samples));
+  const n = recog.words.length, name = (SCENES[S.scene] || SCENES.greet).name;
+  $('sceneInfo').textContent = featsReady || n ? `辨識 ${n} 個詞` : '';
+  $('f2fScene').textContent = '🏷' + (SCENES[S.scene] || SCENES.greet).short;
 }
 async function loadCorpus() {
   index = await store.sharedIndex();
@@ -62,7 +72,7 @@ async function loadCorpus() {
   const add = (w, s) => { if (!w) return; if (!byWord.has(w)) byWord.set(w, []); byWord.get(w).push(s); };
   for (const s of samples) { add(s.word, s); for (const w of s.syn || []) if (w !== s.word) add(w, s); }   // 同義詞也找得到
   // 辨識：本機語料現算；共用語料用預先算好的特徵（開鏡頭時才載入）
-  recog.setSamples([...local, ...shared.filter(s => s._feat)]);
+  recog.setSamples([...local, ...shared.filter(s => s._feat)]); applyScene();
   if (featsReady) attachFeats();
   renderCorpus(); renderRaw();
   $('avatarStatus').textContent = `語料庫：${byWord.size} 個詞、${samples.length} 筆樣本`;
@@ -269,20 +279,27 @@ $('btnListen').onclick = () => listening ? stopListen() : startListen();
 
 // ---------- 對話：手語 → 語音 ----------
 let cam = null, signWords = [], sentenceTimer = null;
-const seg = new Segmenter(frames => onSign(frames));
-function onSign(frames) {
-  const res = recog.classify(frames, 4);
+// 邊比邊找詞（Spotter）：一個詞比完就送出前 3 個候選，不用等手放下
+const spot = new Spotter(recog, (cands, frames) => onSign(frames, cands), { onRest: () => { if (signWords.length) scheduleSentence(700); } });
+spot.threshold = S.threshold;
+function onSign(frames, cands) {
+  const res = cands && cands.length ? cands : recog.classify(frames, 3);
   if (!res.length) { $('camStatus').textContent = '語料庫是空的，先新增語料'; return; }
   const ok = res[0].dist <= S.threshold;
-  signWords.push({ word: ok ? res[0].word : null, cands: res, frames });
+  // 候選：第一個＋跟第一個差不多像的（距離不超過門檻 1.5 倍）
+  const alt = res.filter(r => r.dist <= Math.max(S.threshold * 1.5, res[0].dist * 1.15)).slice(0, 3);   // 前 3 個，太不像（超過門檻 1.5 倍）的不送
+  signWords.push({ word: ok ? res[0].word : null, cands: res, alt, frames, keep: res[0].dist <= S.threshold * 1.3 });
   $('camStatus').textContent = '最接近：' + res.map(r => `${r.word}(${r.dist.toFixed(2)})`).join('、');
   if (ok && S.speakMode === 'word') say(res[0].word);   // 比一個詞就唸一個詞，不用等停下來
-  renderSignChips(); scheduleSentence();
+  if (!ok) showTip(true);   // 沒認出來：提示變紅再出現
+  renderSignChips();
+  if (signWords.length >= 7) endSentence(); else scheduleSentence();
 }
 function renderSignChips() {
+  const alts = w => w.alt.length > 1 ? `<small>${w.alt.slice(1).map(a => esc(a.word)).join('・')}</small>` : '';
   $('signChips').innerHTML = signWords.map((w, i) => w.word
-    ? `<span class="chip known" data-i="${i}">${esc(w.word)}</span>`
-    : `<span class="chip unk" data-i="${i}" title="點一下選正確的詞">？${esc(w.cands[0].word)}</span>`).join('');
+    ? `<span class="chip known" data-i="${i}">${esc(w.word)}${alts(w)}</span>`
+    : `<span class="chip unk" data-i="${i}" title="點一下選正確的詞">？${esc(w.cands[0].word)}${alts(w)}</span>`).join('');
   $('signSentence').textContent = sentence();
   renderLog();
 }
@@ -291,7 +308,7 @@ function renderSignChips() {
 const logLines = [];
 const lineHtml = l => l.t ? `${esc(l.t)}<small>${esc(l.g)}</small>` : esc(l.g);
 function renderLog() {
-  const cur = signWords.map(w => w.word || '？').join('');
+  const cur = signWords.map(w => w.word || (w.keep ? w.cands[0].word + '?' : '？')).join('/');
   const el = $('signLog');
   el.innerHTML = logLines.map(l => `<div>${lineHtml(l)}</div>`).join('') + (cur ? `<div class="cur">${esc(cur)}</div>` : '');
   el.hidden = !logLines.length && !cur;
@@ -303,13 +320,31 @@ function renderLog() {
 }
 // 一句結束（停下來 2 秒多）：這句移到逐字稿、清空詞卡；AI 把手語詞序轉成通順中文
 async function endSentence() {
-  const words = signWords.filter(w => w.word).map(w => w.word), s = words.join('');
+  clearTimeout(sentenceTimer);
+  const ws = signWords; signWords = [];
+  const words = ws.filter(w => w.word).map(w => w.word), s = words.join('');
   if (S.speakMode === 'pause' && s) say(s);
   let line = null;
-  if (signWords.length) { line = { g: signWords.map(w => w.word || '？').join(''), t: null }; logLines.push(line); }
+  if (ws.length) { line = { g: ws.map(w => w.word || '？').join(''), t: null }; logLines.push(line); }
   if (logLines.length > 200) logLines.splice(0, logLines.length - 200);
-  signWords = []; renderSignChips();
+  renderSignChips();
   if (s) $('signSentence').textContent = s;
+  const online = navigator.onLine !== false && hasApi;
+  // AI 挑詞：每段前 3 個候選 → AI 挑最通順的句子再唸
+  if (S.speakMode === 'smart') {
+    const slots = ws.filter(w => w.keep), cands = slots.map(w => w.alt.map(a => a.word));
+    if (!cands.length) return;
+    const r = online ? await aiPick(cands, { scene: (SCENES[S.scene] || {}).name || '' }) : null;
+    const top = slots.map(w => w.alt[0].word);
+    if (r) {
+      line.g = r.pick.map((p, i) => p || '').filter(Boolean).join('/') || top.join('/'); line.t = r.text;
+      // 挑的跟第一候選不一樣、AI 略過的：記下來（之後可拿來改語料）
+      line.fix = r.pick.map((p, i) => p && p !== top[i] ? `${top[i]}→${p}` : null).filter(Boolean);
+    } else line.g = top.join('/');
+    renderLog(); if (!signWords.length) $('signSentence').textContent = line.t || top.join('');
+    say(r ? r.text : top.join(''));
+    return;
+  }
   const t = line && words.length >= 2 && S.glossMode === 'ai' && navigator.onLine !== false ? await aiFluent(words) : null;
   if (t) { line.t = t; renderLog(); if (!signWords.length) $('signSentence').textContent = t; }
   if (S.speakMode === 'fluent' && s) say(t || s);
@@ -326,9 +361,15 @@ $('signChips').onclick = e => {
   renderSignChips();
 };
 const sentence = () => signWords.filter(w => w.word).map(w => w.word).join('');
-function scheduleSentence() {
+// 「比慢一點、詞和詞之間手稍停」提示：開鏡頭時出現 10 秒；沒認出來時變紅再出現 4 秒
+function showTip(warn) {
+  const t = $('f2fTip'); t.classList.remove('hide'); t.classList.toggle('warn', !!warn);
+  clearTimeout(t._h); t._h = setTimeout(() => { t.classList.add('hide'); t.classList.remove('warn'); }, warn ? 4000 : 10000);
+}
+// 一句結束：手放下 0.7 秒，或 1.8 秒沒有新的詞（手還在動就再等）
+function scheduleSentence(ms = 1800) {
   clearTimeout(sentenceTimer);
-  sentenceTimer = setTimeout(endSentence, 2200);
+  sentenceTimer = setTimeout(() => { if (spot.on && spot.moving && signWords.length < 7) scheduleSentence(600); else endSentence(); }, ms);
 }
 // 唸出來：排隊唸（不打斷前一個詞），唸的時候暫停聆聽，避免把自己唸的話又翻成手語
 function say(text, interrupt = false) {
@@ -350,6 +391,12 @@ function pickVoice() {
 }
 $('btnSpeak').onclick = () => { const l = logLines[logLines.length - 1]; const s = sentence() || $('signSentence').textContent || (l && (l.t || l.g)); if (s) say(s.replace(/？/g, ''), true); };
 $('btnClear').onclick = () => { signWords = []; logLines.length = 0; renderSignChips(); $('signSentence').textContent = ''; };
+// 情境選單（鏡頭卡片）＋面對面模式的 🏷 按鈕（點一下換下一個情境）
+$('scene').innerHTML = SCENE_ORDER.map(k => `<option value="${k}">${SCENES[k].name}</option>`).join('');
+$('scene').value = S.scene;
+const setScene = k => { S.scene = k; saveS(); $('scene').value = k; applyScene(); toast('辨識情境：' + SCENES[k].name); };
+$('scene').onchange = e => setScene(e.target.value);
+$('f2fScene').onclick = () => setScene(SCENE_ORDER[(SCENE_ORDER.indexOf(S.scene) + 1) % SCENE_ORDER.length]);
 $('speakMode').value = S.speakMode;
 $('speakMode').onchange = e => { S.speakMode = e.target.value; saveS(); };
 const camOn = () => !!(cam && cam.running);
@@ -361,11 +408,11 @@ async function startCam(size) {
   const ov = $('camOverlay').getContext('2d');
   cam = new Camera($('camVideo'), (f, r) => {
     sizeTo($('camOverlay'), $('camVideo')); drawOverlay(ov, r, false);
-    if (f) seg.push(f);
+    if (f) spot.push(f);
     f2fSeen(!!f, !!(r && ((r.leftHandLandmarks && r.leftHandLandmarks.length) || (r.rightHandLandmarks && r.rightHandLandmarks.length))));
   });
   let ok = false;
-  try { await cam.start('user', size); ok = true; $('camHint').hidden = true; $('btnCam').textContent = '⏹ 關閉鏡頭'; $('camStatus').textContent = '準備好了，請比手語'; f2fStatus(''); }
+  try { await cam.start('user', size); ok = true; showTip(); $('camHint').hidden = true; $('btnCam').textContent = '⏹ 關閉鏡頭'; $('camStatus').textContent = '準備好了，請比手語'; f2fStatus(''); }
   catch (e) {
     const m = mediaErr(e, '鏡頭'); $('camStatus').textContent = m; f2fStatus(m);
     if (e.code === 'MODEL') { $('camHint').hidden = true; $('btnCam').textContent = '⏹ 關閉鏡頭'; }   // 鏡頭畫面有出來，只是辨識模型沒載到
@@ -695,7 +742,7 @@ async function autoSegments() {
   ed.frames.forEach((f, i) => { f._i = i; sg.push(f); }); sg.flush();
   const segs = out.map(fr => [fr[0]._i, fr[fr.length - 1]._i]);
   $('edSegs').innerHTML = segs.length ? segs.map(([a, b], i) => {
-    const guess = recog.classify(ed.frames.slice(a, b + 1), 1)[0];
+    const guess = recog.classify(ed.frames.slice(a, b + 1), 1, true)[0];
     return `<div class="seg" data-a="${a}" data-b="${b}"><span>${(a / FPS).toFixed(1)}–${(b / FPS).toFixed(1)} 秒</span>
       <button data-go="1">看</button><input type="text" placeholder="中文意思" value="${guess && guess.dist <= S.threshold ? esc(guess.word) : ''}"><button data-add="1">＋</button></div>`;
   }).join('') : '<span class="muted">沒有偵測到手語動作</span>';
@@ -730,7 +777,7 @@ $('saveSettings').onclick = () => {
   S = { ...S, threshold: +$('threshold').value, avatarSpeed: +$('avatarSpeed').value, voice: $('voice').value, rate: +$('rate').value, aliases: $('aliases').value,
     avatarKind: $('avatarKind').value, avatarUrl: $('avatarUrl').value.trim(), prefCat: $('prefCat').value, addCat: $('addCat').value, glossMode: $('glossMode').value, sttEngine: $('sttEngine').value };
   saveS();
-  player.speed = real.speed = S.avatarSpeed; toast('已儲存');
+  player.speed = real.speed = S.avatarSpeed; spot.threshold = S.threshold; toast('已儲存');
   if (S.avatarKind + S.avatarUrl !== old) applyAvatar();
 };
 if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = fillSettings;
@@ -744,4 +791,4 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 
 route();
 loadCorpus().then(applyAvatar);
-window.__tsl = { enterF2F, exitF2F, endSentence, get logLines() { return logLines; }, onSign, attachFeats, glossTokens, enqueue, real, recog, store, get samples() { return samples; }, playText, loadCorpus, openEditor, player, preview };
+window.__tsl = { spot, applyScene, enterF2F, exitF2F, endSentence, get logLines() { return logLines; }, onSign, attachFeats, glossTokens, enqueue, real, recog, store, get samples() { return samples; }, playText, loadCorpus, openEditor, player, preview };

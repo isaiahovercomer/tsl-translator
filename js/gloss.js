@@ -114,6 +114,22 @@ export async function aiFluent(words, { timeout = 4000, endpoint = 'api/fluent' 
   } catch { return null; } finally { clearTimeout(tm); }
 }
 
+// ---- 候選詞 → AI 挑最通順的句子（/api/fluent cands 模式）→ {text, pick} 或 null ----
+// cands: [[詞1,詞2,詞3], ...]（每段依相似度排序）
+export async function aiPick(cands, { scene = '', timeout = 5000, endpoint = 'api/fluent' } = {}) {
+  const cs = cands.map(c => c.filter(w => w && w !== '？')).filter(c => c.length);
+  if (!cs.length) return null;
+  if (cs.length === 1 && cs[0].length === 1) return { text: cs[0][0], pick: [cs[0][0]] };
+  const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), timeout);
+  try {
+    const r = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cands: cs, scene }), signal: ctl.signal });
+    if (!r.ok) return null;
+    const j = await r.json();
+    if (typeof j.text !== 'string' || !j.text.trim()) return null;
+    return { text: j.text.trim(), pick: Array.isArray(j.pick) ? j.pick : cs.map(c => c[0]) };
+  } catch { return null; } finally { clearTimeout(tm); }
+}
+
 const VAR = Object.fromEntries('布佈 台臺 裡裏 著着 群羣 線綫 秘祕 嘆歎 汙污 峰峯 姊姐 啟啓 床牀 鉤鈎 痺痹'.split(' ').flatMap(p => [[p[0], p[1]], [p[1], p[0]]]));
 const variants = w => [...w].map((c, i) => VAR[c] ? w.slice(0, i) + VAR[c] + w.slice(i + 1) : null).filter(Boolean);
 /** AI 給的 gloss 詞 → 語料庫的詞（沒有的詞再用最長比對拆開） */
