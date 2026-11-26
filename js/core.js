@@ -82,6 +82,34 @@ export function makeSample(word, frames, src, extra = {}) {
     data: encodeFrames(frames), ...extra };
 }
 export const sampleFrames = s => s._frames || (s._frames = decodeFrames(s.data, s.frames));
+// 影片寬高比（寬÷高）。x 以畫面寬、y 以畫面高正規化，3D 人像要用它換回真實比例。
+// 新樣本會記在 s.aspect；舊樣本用手的骨長估計。
+export const sampleAspect = s => s.aspect || s._aspect || (s._aspect = estimateAspect(sampleFrames(s)));
+// 估計寬高比：手指骨長是固定的，找一個比例讓各影格的骨長最一致
+export function estimateAspect(frames, fallback = 4 / 3) {
+  const SEG = [[0, 5], [0, 17], [5, 17], [0, 9], [5, 6], [9, 10], [13, 14], [1, 2], [2, 3]];
+  const hands = [];
+  for (const f of frames) for (const off of [OFF.lh, OFF.rh]) if (has(f, off)) hands.push([f, off]);
+  if (hands.length < 8) return fallback;
+  const costAt = a => {
+    let cost = 0;
+    for (const [i, j] of SEG) {
+      let sum = 0, sq = 0;
+      for (const [f, off] of hands) {
+        const p = (off + i) * 3, q = (off + j) * 3;
+        const L = Math.hypot((f[p] - f[q]) * a, f[p + 1] - f[q + 1], (f[p + 2] - f[q + 2]) * a);
+        sum += L; sq += L * L;
+      }
+      const m = sum / hands.length; cost += Math.sqrt(Math.max(0, sq / hands.length - m * m)) / (m || 1);
+    }
+    return cost;
+  };
+  let best = fallback, bestCost = Infinity;
+  for (let a = 0.45; a <= 2.4; a *= 1.02) { const c = costAt(a); if (c < bestCost) { bestCost = c; best = a; } }
+  // 手幾乎沒轉動時看不出比例：明顯比預設好才採用
+  if (!(bestCost < costAt(fallback) * 0.85)) return fallback;
+  return Math.round(best * 100) / 100;
+}
 
 // ---- 身體基準 ----
 export function bodyRef(f) {

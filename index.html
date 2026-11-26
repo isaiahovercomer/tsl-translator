@@ -8,6 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 :root{--ink:#2F3343;--paper:#FAF6EE;--gold:#C49356;--brick:#B03A2E;--line:#e4dccb;--muted:#7b7a74;--ok:#2e7d5b;--card:#fff}
@@ -211,6 +212,14 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
     <div class="card">
       <h2>⚙️ 設定</h2>
       <label>辨識嚴格度（越小越嚴格）：<b id="thVal"></b><input type="range" id="threshold" min="0.4" max="3" step="0.05"></label>
+      <div class="row"><label class="grow">手語人像：<select id="avatarKind" style="width:100%">
+        <option value="female">3D 寫實人像：女性</option>
+        <option value="male">3D 寫實人像：男性</option>
+        <option value="eva">3D 卡通人像：Eva（Performs）</option>
+        <option value="custom">3D 人像：自訂 .glb 網址（Mixamo／Biped 骨架）</option>
+        <option value="2d">2D 簡筆人像（最省電）</option>
+      </select></label></div>
+      <input type="url" id="avatarUrl" placeholder="https://…/avatar.glb" hidden>
       <label>手語人像速度：<b id="spVal"></b><input type="range" id="avatarSpeed" min="0.5" max="1.6" step="0.05"></label>
       <div class="row"><label class="grow">中文語音：<select id="voice" style="width:100%"></select></label></div>
       <label>語速：<b id="rtVal"></b><input type="range" id="rate" min="0.6" max="1.5" step="0.05"></label>

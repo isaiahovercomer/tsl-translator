@@ -83,7 +83,7 @@ export async function extractFromFile(file, onProgress = () => {}, signal) {
       if (i % 5 === 0) onProgress(i / n);
     }
     onProgress(1);
-    return { frames, duration: dur };
+    return { frames, duration: dur, aspect: v.videoWidth && v.videoHeight ? +(v.videoWidth / v.videoHeight).toFixed(3) : undefined };
   } finally {
     v.removeAttribute('src'); v.load(); URL.revokeObjectURL(url);   // 影片不留
     lm.close && lm.close();

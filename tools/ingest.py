@@ -61,6 +61,8 @@ def extract(video_path, progress=True):
     src_fps = cap.get(cv2.CAP_PROP_FPS) or 30
     total = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
     frames, i, next_t = [], 0, 0.0
+    vw, vh = cap.get(cv2.CAP_PROP_FRAME_WIDTH), cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    extract.aspect = round(vw / vh, 3) if vw and vh else None   # 影片寬÷高，3D 人像要用
     while True:
         ok, img = cap.read()
         if not ok:
@@ -145,7 +147,7 @@ def save_index(ix):
     (CORPUS / 'index.json').write_text(json.dumps(ix, ensure_ascii=False, indent=1), 'utf-8')
 
 
-def add_sign(ix, word, frames, src, t=None, sid=None, created=None):
+def add_sign(ix, word, frames, src, t=None, sid=None, created=None, aspect=None):
     word = word.strip()
     if not word or len(frames) < 4:
         return None
@@ -153,6 +155,8 @@ def add_sign(ix, word, frames, src, t=None, sid=None, created=None):
          'created': created or now(), 'data': encode(frames)}
     if t:
         s['t'] = t
+    if aspect:
+        s['aspect'] = aspect
     if any(e['id'] == s['id'] for e in ix['signs']):
         return None
     (CORPUS / 'signs').mkdir(parents=True, exist_ok=True)
@@ -178,16 +182,18 @@ def parse_segments(lines):
     return out
 
 
-def ingest_frames(frames, vid, title, url, segs):
+def ingest_frames(frames, vid, title, url, segs, aspect=None):
     ix = load_index()
     (CORPUS / 'raw').mkdir(parents=True, exist_ok=True)
     raw = {'v': 1, 'videoId': vid, 'title': title, 'url': url, 'fps': FPS, 'frames': len(frames), 'P': P,
            'created': now(), 'data': encode(frames)}
+    if aspect:
+        raw['aspect'] = aspect
     (CORPUS / 'raw' / f'{vid}.json').write_text(json.dumps(raw, ensure_ascii=False), 'utf-8')
     ix['raw'] = [r for r in ix['raw'] if r['id'] != vid]
     added = []
     for a, b, word in segs:
-        s = add_sign(ix, word, frames[int(a * FPS):int(b * FPS) + 1], f'youtube:{vid}', [a, b])
+        s = add_sign(ix, word, frames[int(a * FPS):int(b * FPS) + 1], f'youtube:{vid}', [a, b], aspect=aspect)
         if s:
             added.append(word)
     ix['raw'].append({'id': vid, 'title': title, 'url': url, 'file': f'raw/{vid}.json', 'frames': len(frames),
@@ -209,13 +215,13 @@ def from_url(url, segs):
         print(f"下載完成：{info.get('title')}，開始抽骨架…", flush=True)
         frames = extract(path)
     # 離開 with 區塊時暫存影片已刪除
-    return ingest_frames(frames, re.sub(r'[^\w-]', '_', info['id']), info.get('title') or url, url, segs)
+    return ingest_frames(frames, re.sub(r'[^\w-]', '_', info['id']), info.get('title') or url, url, segs, extract.aspect)
 
 
 def from_file(path, segs):
     frames = extract(path)
     vid = re.sub(r'[^\w-]', '_', Path(path).stem)[:40]
-    return ingest_frames(frames, vid, Path(path).name, '', segs)
+    return ingest_frames(frames, vid, Path(path).name, '', segs, extract.aspect)
 
 
 def from_pack(path_or_obj):
@@ -228,7 +234,9 @@ def from_pack(path_or_obj):
             if int(s.get('P', P)) != P or not 4 <= n <= FPS * 20:
                 continue
             sid = re.sub(r'[^\w]', '', str(s.get('id') or ''))[:40] or None
-            r = add_sign(ix, str(s['word'])[:30], fr, str(s.get('src') or 'upload')[:60], s.get('t'), sid, s.get('created'))
+            asp = s.get('aspect')
+            asp = round(float(asp), 3) if isinstance(asp, (int, float)) and 0.2 < asp < 5 else None
+            r = add_sign(ix, str(s['word'])[:30], fr, str(s.get('src') or 'upload')[:60], s.get('t'), sid, s.get('created'), asp)
             if r:
                 added.append(r['word'])
         except Exception as e:  # 壞掉的樣本略過

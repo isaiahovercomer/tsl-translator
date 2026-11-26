@@ -5,7 +5,13 @@ import { OFF, PI, FI, P, FPS, has, newFrame, bodyRef } from './core.js';
 const STD = { cx: 0.5, cy: 0.46, w: 0.3 };
 
 // 把一段樣本換到標準身形（用整段平均肩膀定位，不同人的語料就能接在一起）
-export function normalizeSeq(frames) {
+// aspect = 影片寬÷高：先把 x、z 換成跟 y 一樣的單位，人像才不會變形
+export function normalizeSeq(frames, aspect = 1) {
+  if (aspect && aspect !== 1) frames = frames.map(f => {
+    const g = new Float32Array(f);
+    for (let i = 0; i < P; i++) { g[i * 3] *= aspect; g[i * 3 + 2] *= aspect; }
+    return g;
+  });
   const refs = frames.map(bodyRef).filter(Boolean);
   if (!refs.length) return frames;
   const r = { cx: mean(refs.map(x => x.cx)), cy: mean(refs.map(x => x.cy)), w: mean(refs.map(x => x.w)) };
@@ -92,6 +98,7 @@ export function drawAvatar(ctx, f, opt = {}) {
   const p = i => OFF.pose + i;
   const skin = opt.skin || '#F2C9A5', shirt = opt.shirt || '#2F3343', line = '#3a2a22';
   ctx.clearRect(0, 0, W, H);
+  if (opt.captionOnly) return drawCaption(ctx, opt.caption, W, H, S);
   if (opt.bg) { ctx.fillStyle = opt.bg; ctx.fillRect(0, 0, W, H); }
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const sw = Math.hypot(X(p(PI.lSh)) - X(p(PI.rSh)), Y(p(PI.lSh)) - Y(p(PI.rSh)));
@@ -122,12 +129,15 @@ export function drawAvatar(ctx, f, opt = {}) {
     ctx.beginPath(); ctx.moveTo(X(p(e)), Y(p(e))); ctx.lineTo(hx0, hy0); ctx.stroke();
     drawHand(ctx, f, h, X, Y, sw, skin, line);
   }
-  if (opt.caption) {
+  drawCaption(ctx, opt.caption, W, H, S);
+}
+function drawCaption(ctx, caption, W, H, S) {
+  if (caption) {
     ctx.font = `bold ${Math.round(S * 0.07)}px system-ui, "Noto Sans TC", sans-serif`;
     ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(47,51,67,.85)';
-    const tw = ctx.measureText(opt.caption).width + S * 0.06;
+    const tw = ctx.measureText(caption).width + S * 0.06;
     ctx.fillRect(W / 2 - tw / 2, H - S * 0.11, tw, S * 0.09);
-    ctx.fillStyle = '#fff'; ctx.fillText(opt.caption, W / 2, H - S * 0.04);
+    ctx.fillStyle = '#fff'; ctx.fillText(caption, W / 2, H - S * 0.04);
   }
 }
 function line2(ctx, a, b, c, d) { ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke(); }
@@ -177,14 +187,24 @@ export class AvatarPlayer {
     this.c = canvas; this.ctx = canvas.getContext('2d'); this.opt = opt;
     this.timeline = []; this.t0 = 0; this.cur = REST; this.idleSince = 0; this.onWord = opt.onWord || (() => {});
     this.speed = 1; this.lastWord = null;
-    const loop = (ts) => { this.tick(ts); requestAnimationFrame(loop); };
+    const loop = (ts) => { try { this.tick(ts); } catch (e) { console.warn(e); } requestAnimationFrame(loop); };
     requestAnimationFrame(loop);
   }
   resize() {
     const r = this.c.getBoundingClientRect(), d = Math.min(2, window.devicePixelRatio || 1);
     this.c.width = Math.round(r.width * d); this.c.height = Math.round(r.height * d);
   }
-  // items: [{word, frames}]，frames 是原始影格
+  // 3D 人像：給 glb 網址就換成 3D；給空值回到 2D。載入失敗會丟出錯誤（仍維持 2D）
+  async set3D(url) {
+    if (!url) { if (this.r3d) this.r3d.dispose(); this.r3d = null; return; }
+    if (this.r3d && this.r3d.url === url) return;
+    const { Avatar3D } = await import('./avatar3d.js');
+    const r = new Avatar3D(this.c);
+    try { await r.load(url); } catch (e) { r.dispose(); throw e; }
+    if (this.r3d) this.r3d.dispose();
+    this.r3d = r;
+  }
+  // items: [{word, frames, aspect}]，frames 是原始影格
   play(items, append = true) {
     const now = performance.now();
     let start = this.cur;
@@ -192,7 +212,7 @@ export class AvatarPlayer {
     else start = this.timeline[this.timeline.length - 1].f;
     const push = (f, word) => this.timeline.push({ f, word });
     for (const it of items) {
-      const fr = normalizeSeq(it.frames);
+      const fr = normalizeSeq(it.frames, it.aspect);
       const trimmed = trimRest(fr);
       for (let i = 1; i <= 5; i++) push(lerpFrame(start, trimmed[0], ease(i / 6)), it.word);
       trimmed.forEach(f => push(f, it.word));
@@ -205,7 +225,7 @@ export class AvatarPlayer {
     if (this.c.width !== Math.round(this.c.getBoundingClientRect().width * Math.min(2, window.devicePixelRatio || 1))) this.resize();
     let f = this.cur, word = null;
     if (this.timeline.length) {
-      const x = (ts - this.t0) / 1000 * FPS * this.speed;
+      const x = Math.max(0, (ts - this.t0) / 1000 * FPS * this.speed);
       const i = Math.floor(x);
       if (i >= this.timeline.length - 1) { f = this.timeline[this.timeline.length - 1].f; this.timeline = []; }
       else { f = lerpFrame(this.timeline[i].f, this.timeline[i + 1].f, x - i); word = this.timeline[i].word; }
@@ -216,7 +236,10 @@ export class AvatarPlayer {
     }
     this.cur = f;
     if (word !== this.lastWord) { this.lastWord = word; this.onWord(word); }
-    drawAvatar(this.ctx, f, { ...this.opt, caption: word || this.opt.idleCaption || '' });
+    if (!this.c.offsetParent) return;          // 分頁沒顯示就不畫，省電
+    const caption = word || this.opt.idleCaption || '';
+    if (this.r3d && this.r3d.ready) { this.r3d.render(f); drawAvatar(this.ctx, f, { caption, captionOnly: true }); }
+    else drawAvatar(this.ctx, f, { ...this.opt, caption });
   }
 }
 const ease = t => t * t * (3 - 2 * t);

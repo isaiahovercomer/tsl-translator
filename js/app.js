@@ -1,16 +1,16 @@
 // app.js — 介面與流程
-import { FPS, Recognizer, Segmenter, tokenize, makeSample, sampleFrames, decodeFrames, handsActive as handsUp } from './core.js';
+import { FPS, Recognizer, Segmenter, tokenize, makeSample, sampleFrames, sampleAspect, estimateAspect, decodeFrames, handsActive as handsUp } from './core.js';
 import { AvatarPlayer, normalizeSeq, drawAvatar } from './avatar.js';
 import { Camera, extractFromFile, drawOverlay } from './vision.js';
 import * as store from './store.js';
 
-const VERSION = '0.1.1';
+const VERSION = '0.2.0';
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms = 2600) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), ms); }
 
 // ---------- 設定 ----------
-const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝' };
+const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝', avatarKind: 'female', avatarUrl: '' };
 let S = { ...DEF };
 try { S = { ...DEF, ...JSON.parse(localStorage.getItem('tsl-settings') || '{}') }; } catch {}
 const aliasMap = () => Object.fromEntries(S.aliases.split('\n').map(l => l.split('=').map(x => x.trim())).filter(a => a.length === 2 && a[0] && a[1]));
@@ -43,6 +43,20 @@ async function loadCorpus() {
 // ---------- 對話：聽人說話 → 人像 ----------
 const player = new AvatarPlayer($('avatar'), { onWord: w => highlightWord(w) });
 player.speed = S.avatarSpeed;
+// 3D 人像：寫實女性／男性（微軟 Rocketbox，MIT），或自訂 Mixamo／Biped 骨架 .glb；載入失敗就用 2D
+const AVATAR_URLS = {
+  female: 'avatars/tw-female.glb',
+  male: 'avatars/tw-male.glb',
+  eva: 'https://resources.gti.upf.edu/3Dcharacters/ReadyEva/ReadyEva.glb',
+};
+const vAsp = v => v && v.videoWidth && v.videoHeight ? +(v.videoWidth / v.videoHeight).toFixed(3) : undefined;
+async function applyAvatar() {
+  const url = S.avatarKind === '2d' ? null : S.avatarKind === 'custom' ? S.avatarUrl.trim() || null : AVATAR_URLS[S.avatarKind] || AVATAR_URLS.female;
+  if (url) $('avatarStatus').textContent = '3D 人像載入中…';
+  try { await Promise.all([player.set3D(url), preview.set3D(url)]); }
+  catch (e) { console.warn(e); toast('3D 人像載入失敗，先用 2D 人像：' + e.message, 4000); player.set3D(null); preview.set3D(null); }
+  $('avatarStatus').textContent = `語料庫：${byWord.size} 個詞、${samples.length} 筆樣本`;
+}
 let lastTokens = [];
 function playText(text) {
   const toks = tokenize(text, [...byWord.keys()], aliasMap());
@@ -50,7 +64,7 @@ function playText(text) {
   $('speechChips').innerHTML = toks.map((t, i) => `<span class="chip ${t.known ? 'known' : ''}" data-i="${i}">${esc(t.text)}${t.known && t.word !== t.text ? `<small>${esc(t.word)}</small>` : ''}</span>`).join('');
   const items = toks.filter(t => t.known).map(t => {
     const list = byWord.get(t.word); const s = list[Math.floor(Math.random() * list.length)];
-    return { word: t.word, frames: sampleFrames(s) };
+    return { word: t.word, frames: sampleFrames(s), aspect: sampleAspect(s) };
   });
   if (items.length) player.play(items);
   else if (text.trim()) $('avatarStatus').textContent = '語料庫裡還沒有這些詞，先到「新增語料」錄起來。';
@@ -114,7 +128,7 @@ $('signChips').onclick = e => {
   if (!pick) return;
   w.word = pick.trim();
   // 改正的結果直接存成本機語料，越用越準
-  store.localPut(makeSample(w.word, w.frames, 'correction')).then(loadCorpus);
+  store.localPut(makeSample(w.word, w.frames, 'correction', { aspect: vAsp($('camVideo')) })).then(loadCorpus);
   renderSignChips();
 };
 const sentence = () => signWords.filter(w => w.word).map(w => w.word).join('');
@@ -183,7 +197,7 @@ $('sampleList').onclick = async e => {
   if (e.target.dataset.play) playSample(list[e.target.dataset.play]);
   if (e.target.dataset.del) { await store.localDel(list[e.target.dataset.del].id); toast('已刪除'); await loadCorpus(); }
 };
-function playSample(s) { preview.play([{ word: s.word, frames: sampleFrames(s) }], false); }
+function playSample(s) { preview.play([{ word: s.word, frames: sampleFrames(s), aspect: sampleAspect(s) }], false); }
 $('btnExport').onclick = async () => {
   const local = await store.localAll();
   if (!local.length) return toast('本機沒有語料');
@@ -228,9 +242,9 @@ async function startRec() {
 }
 function finishRec() {
   if (recState !== 'rec') return; recState = 'idle';
-  const frames = recFrames; stopRec();
+  const frames = recFrames, asp = vAsp($('recVideo')); stopRec();
   if (frames.length < 6) return toast('太短了，再錄一次');
-  openEditor(frames, 'camera', $('recWord').value.trim(), `鏡頭錄製：${$('recWord').value.trim()}`);
+  openEditor(frames, 'camera', $('recWord').value.trim(), `鏡頭錄製：${$('recWord').value.trim()}`, asp);
 }
 function stopRec() {
   if (recCam) { recCam.stop(); recCam = null; }
@@ -246,9 +260,9 @@ $('videoFile').onchange = async e => {
   const file = e.target.files[0]; if (!file) return; e.target.value = '';
   $('extractProg').hidden = false; $('extractStatus').textContent = '分析中（只取骨架，影片不保存）…';
   try {
-    const { frames, duration } = await extractFromFile(file, p => { $('extractProg').value = p; });
+    const { frames, duration, aspect } = await extractFromFile(file, p => { $('extractProg').value = p; });
     $('extractStatus').textContent = `完成：${duration.toFixed(1)} 秒、${frames.length} 格骨架資料。影片已丟棄。`;
-    openEditor(frames, 'upload', '', file.name);
+    openEditor(frames, 'upload', '', file.name, aspect);
   } catch (err) { $('extractStatus').textContent = '失敗：' + err.message; }
   $('extractProg').hidden = true;
 };
@@ -278,7 +292,7 @@ $('btnCapture').onclick = async () => {
   catch (e) { $('capStatus').textContent = '擷取失敗：' + e.message; finishCapture(); }
 };
 function finishCapture() {
-  if (!cap) return; cap.stop(); cap = null;
+  if (!cap) return; const asp = vAsp($('capVideo')); cap.stop(); cap = null;
   $('btnCapStop').disabled = true; $('btnCapture').disabled = false; $('capStage').hidden = true;
   // 去掉頭尾沒有人的部分
   let a = capFrames.findIndex(f => f[21] === f[21]), b = capFrames.length - 1;
@@ -287,7 +301,7 @@ function finishCapture() {
   const frames = capFrames.slice(a, b + 1); capFrames = [];
   const url = $('importUrl').value.trim(), id = ytId(url);
   $('capStatus').textContent = `完成：${(frames.length / FPS).toFixed(0)} 秒骨架。請在下方切段標註。`;
-  openEditor(frames, id ? 'youtube:' + id : (url || 'capture'), '', url || '擷取的影片');
+  openEditor(frames, id ? 'youtube:' + id : (url || 'capture'), '', url || '擷取的影片', asp);
 }
 $('btnCapStop').onclick = finishCapture;
 
@@ -309,14 +323,15 @@ function renderRaw() {
 $('rawList').onclick = async e => {
   const i = e.target.dataset.raw; if (i === undefined) return;
   const entry = index.raw[i];
-  try { const t = await store.rawTrack(entry); openEditor(decodeFrames(t.data, t.frames), 'youtube:' + (t.videoId || entry.id), '', entry.title || entry.url); }
+  try { const t = await store.rawTrack(entry); openEditor(decodeFrames(t.data, t.frames), 'youtube:' + (t.videoId || entry.id), '', entry.title || entry.url, t.aspect); }
   catch (err) { toast(err.message); }
 };
 
 // ---------- 切段編輯器 ----------
 let ed = null;
-function openEditor(frames, src, word, title) {
-  ed = { frames, norm: normalizeSeq(frames), src, a: 0, b: frames.length - 1, pos: 0, playing: 0 };
+function openEditor(frames, src, word, title, aspect) {
+  aspect = aspect || estimateAspect(frames);
+  ed = { frames, aspect, norm: normalizeSeq(frames, aspect), src, a: 0, b: frames.length - 1, pos: 0, playing: 0 };
   $('editor').hidden = false; $('edTitle').textContent = '切段與標註：' + title;
   $('edWord').value = word || ''; $('edPos').max = frames.length - 1; $('edPos').value = 0;
   // 鏡頭錄的：自動去掉頭尾手放下的部分
@@ -352,7 +367,7 @@ $('edClose').onclick = () => { $('editor').hidden = true; ed = null; };
 $('edAdd').onclick = async () => {
   const w = $('edWord').value.trim(); if (!w) return toast('請輸入這段的中文意思');
   if (ed.b - ed.a < 5) return toast('選取太短');
-  await store.localPut(makeSample(w, ed.frames.slice(ed.a, ed.b + 1), ed.src, { t: [ed.a / FPS, ed.b / FPS] }));
+  await store.localPut(makeSample(w, ed.frames.slice(ed.a, ed.b + 1), ed.src, { t: [ed.a / FPS, ed.b / FPS], aspect: ed.aspect }));
   toast(`已加入「${w}」`); $('edWord').value = ''; await loadCorpus();
 };
 function autoSegments() {
@@ -373,7 +388,7 @@ $('edSegs').onclick = async e => {
   if (e.target.dataset.go) { ed.a = a; ed.b = b; ed.pos = a; $('edPos').value = a; edRange(); $('edPlay').click(); }
   if (e.target.dataset.add) {
     const w = row.querySelector('input').value.trim(); if (!w) return toast('請輸入中文意思');
-    await store.localPut(makeSample(w, ed.frames.slice(a, b + 1), ed.src, { t: [a / FPS, b / FPS] }));
+    await store.localPut(makeSample(w, ed.frames.slice(a, b + 1), ed.src, { t: [a / FPS, b / FPS], aspect: ed.aspect }));
     row.style.opacity = .5; e.target.disabled = true; toast(`已加入「${w}」`); await loadCorpus();
   }
 };
@@ -383,22 +398,28 @@ function fillSettings() {
   $('threshold').value = S.threshold; $('thVal').textContent = S.threshold;
   $('avatarSpeed').value = S.avatarSpeed; $('spVal').textContent = S.avatarSpeed + '×';
   $('rate').value = S.rate; $('rtVal').textContent = S.rate + '×'; $('aliases').value = S.aliases;
+  if (!AVATAR_URLS[S.avatarKind] && !['2d', 'custom'].includes(S.avatarKind)) S.avatarKind = 'female';
+  $('avatarKind').value = S.avatarKind; $('avatarUrl').value = S.avatarUrl; $('avatarUrl').hidden = S.avatarKind !== 'custom';
   const vs = ('speechSynthesis' in window) ? speechSynthesis.getVoices().filter(v => /zh/i.test(v.lang)) : [];
   $('voice').innerHTML = '<option value="">自動（台灣華語優先）</option>' + vs.map(v => `<option value="${esc(v.voiceURI)}" ${v.voiceURI === S.voice ? 'selected' : ''}>${esc(v.name)}（${esc(v.lang)}）</option>`).join('');
 }
 for (const [id, out, suf] of [['threshold', 'thVal', ''], ['avatarSpeed', 'spVal', '×'], ['rate', 'rtVal', '×']]) $(id).oninput = e => { $(out).textContent = e.target.value + suf; };
 $('saveSettings').onclick = () => {
-  S = { threshold: +$('threshold').value, avatarSpeed: +$('avatarSpeed').value, voice: $('voice').value, rate: +$('rate').value, aliases: $('aliases').value };
+  const old = S.avatarKind + S.avatarUrl;
+  S = { threshold: +$('threshold').value, avatarSpeed: +$('avatarSpeed').value, voice: $('voice').value, rate: +$('rate').value, aliases: $('aliases').value,
+    avatarKind: $('avatarKind').value, avatarUrl: $('avatarUrl').value.trim() };
   try { localStorage.setItem('tsl-settings', JSON.stringify(S)); } catch {}
   player.speed = S.avatarSpeed; toast('已儲存');
+  if (S.avatarKind + S.avatarUrl !== old) applyAvatar();
 };
 if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = fillSettings;
 fillSettings();
+$('avatarKind').onchange = e => { $('avatarUrl').hidden = e.target.value !== 'custom'; };
 $('verInfo').textContent = '版本 ' + VERSION;
 
 // ---------- PWA ----------
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
 route();
-loadCorpus();
-window.__tsl = { recog, store, get samples() { return samples; }, playText, loadCorpus, openEditor };
+loadCorpus().then(applyAvatar);
+window.__tsl = { recog, store, get samples() { return samples; }, playText, loadCorpus, openEditor, player, preview };
