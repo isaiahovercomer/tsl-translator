@@ -76,7 +76,8 @@ export class Avatar3D {
     this.url = url;
     // 網址後面的設定：#toon 改成插畫風；#tint=Tops:3a4a7a,Hair:4a3a36 依材質名稱調色（VRM）
     const hash = (url.split('#')[1] || ''); url = url.split('#')[0];
-    const toon = hash === 'toon'; this.toon = toon;
+    const toon = /(^|&)toon($|&)/.test(hash); this.toon = toon;
+    this.look = (hash.match(/look=(\w+)/) || [, ''])[1];   // VRM 畫法：comic 粗描邊漫畫、soft 柔和上色、flat 扁平色塊
     const tints = Object.fromEntries((hash.match(/tint=([^&]+)/) || [, ''])[1].split(',').filter(Boolean).map(x => x.split(':')));
     let root, vrm = null;
     if (/\.vrm(\?|$)/i.test(url)) {
@@ -213,6 +214,7 @@ export class Avatar3D {
           if ('outlineWidthFactor' in m) m.outlineWidthFactor *= 1.6;
         }
         if (this.hairClip && /_HAIR/.test(n) && !/HairBack/.test(n)) Object.assign(m, { clipping: true, clippingPlanes: this.hairClip.world, clipIntersection: true });
+        if (this.look && 'shadingToonyFactor' in m) this.applyLook(m, n);
         if (isOver(n)) {   // 眉毛、眼線：不做深度測試（蓋過瀏海），但 stencil=1 的地方（手、身體）不畫
           Object.assign(m, { depthTest: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.NotEqualStencilFunc,
             stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.KeepStencilOp });
@@ -220,6 +222,25 @@ export class Avatar3D {
         }
       }
     });
+  }
+
+  // 同一個 VRM 換不同畫法（MToon 參數）
+  applyLook(m, n) {
+    const L = this.look;
+    if (L === 'comic') {          // 美式漫畫：硬陰影、粗黑描邊、陰影偏深
+      m.shadingToonyFactor = 1; m.shadingShiftFactor = -0.15;
+      m.shadeColorFactor.copy(m.color).multiplyScalar(0.62);
+      m.outlineWidthFactor = Math.max(m.outlineWidthFactor, 0.0012) * 2.4; m.outlineColorFactor.setRGB(0.05, 0.04, 0.04); m.outlineLightingMixFactor = 0;
+    } else if (L === 'soft') {    // 柔和上色：漸層陰影、幾乎沒有描邊、淡淡邊緣光
+      m.shadingToonyFactor = 0.25; m.shadingShiftFactor = 0.1;
+      m.shadeColorFactor.copy(m.color).multiplyScalar(0.82);
+      m.outlineWidthFactor *= 0.25;
+      m.parametricRimColorFactor.setRGB(0.35, 0.33, 0.32); m.parametricRimFresnelPowerFactor = 4; m.rimLightingMixFactor = 0.6;
+    } else if (L === 'flat') {    // 扁平色塊：沒有明暗、細描邊（像向量插畫）
+      m.shadeColorFactor.copy(m.color); m.shadingToonyFactor = 1;
+      m.outlineWidthFactor = Math.max(m.outlineWidthFactor, 0.001) * 1.3; m.outlineColorFactor.setRGB(0.15, 0.12, 0.12); m.outlineLightingMixFactor = 0;
+      m.parametricRimColorFactor.setRGB(0, 0, 0);
+    }
   }
 
   dispose() {

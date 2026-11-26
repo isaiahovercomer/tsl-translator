@@ -1,4 +1,9 @@
-# 交接報告：台灣手語對話翻譯器（2026-11-26 下午，v0.7.1）
+# 交接報告：台灣手語對話翻譯器（2026-11-26 下午，v0.7.2）
+
+## v0.7.2（使用者問「不能有其他畫風嗎」→ 做 A 換畫法＋B 成熟大人）
+- A：VRM 換畫法 `#look=comic|soft|flat`（avatar3d.js `applyLook`，改 MToon 參數）；差異不大。
+- B：成熟插畫風主播 biz-f1/f2/m1/m2（Rocketbox 商務人士 MIT，見 avatars/README.md 的做法與 tools/ 三支工具）；每個約 0.4 MB、18 個 ARKit 表情、手指齊全。biz-f2 米色西裝接近膚色（整張貼圖含手，不能只調衣服）。
+- 比較圖：gallery_a（A 三種畫法）、gallery_b（B 四位）。等使用者選。
 
 ## v0.7.1（使用者選 A 動漫風方向，要求手勢與表情最清楚）
 - 6 位 VRoid 主播（女：黑長髮 Shino、短髮 AvatarSample_A 毛衣調深藍、深色短髮 Shibu；男：深色外套 AvatarSample_C、背心領帶 Fumiriya 頭髮調深棕、黑短髮 HairSample_Male 帽T調深藍灰），網址 `#tint=材質:色` 調色。
@@ -63,7 +68,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.7.1
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.7.2
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。

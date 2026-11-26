@@ -6,7 +6,7 @@ import * as store from './store.js';
 import { toGloss, aiGloss, mapGloss } from './gloss.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.7.1';
+const VERSION = '0.7.2';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -79,6 +79,11 @@ const AVATAR_URLS = {
   'vrm-m2': 'avatars/vrm-m2.vrm#tint=Hair:5a4640',                 // 背心領帶、頭髮改深棕
   'vrm-m3': 'avatars/vrm-m3.vrm#tint=Tops:4a5470',                 // 黑短髮、白帽T改深藍灰
   'toon-f': 'avatars/tw-female.glb#toon', 'toon-m': 'avatars/tw-male.glb#toon',
+  // 成熟插畫風：Rocketbox 商務人士（MIT），貼圖做成插畫風＋卡通著色描邊
+  'biz-f1': 'avatars/biz-f1.glb#toon', 'biz-f2': 'avatars/biz-f2.glb#toon', 'biz-m1': 'avatars/biz-m1.glb#toon', 'biz-m2': 'avatars/biz-m2.glb#toon',
+  // 同一位動漫主播換畫法
+  'vrm-f1-comic': 'avatars/vrm-f1.vrm#look=comic', 'vrm-f1-soft': 'avatars/vrm-f1.vrm#look=soft', 'vrm-f1-flat': 'avatars/vrm-f1.vrm#look=flat',
+  'vrm-m3-comic': 'avatars/vrm-m3.vrm#tint=Tops:4a5470&look=comic', 'vrm-m3-soft': 'avatars/vrm-m3.vrm#tint=Tops:4a5470&look=soft', 'vrm-m3-flat': 'avatars/vrm-m3.vrm#tint=Tops:4a5470&look=flat',
   female: 'avatars/tw-female.glb',
   male: 'avatars/tw-male.glb',
   eva: 'https://resources.gti.upf.edu/3Dcharacters/ReadyEva/ReadyEva.glb',
