@@ -171,6 +171,11 @@ export class Avatar3D {
     const hips = this.b.Hips.getWorldPosition(new THREE.Vector3()).y;
     const bottom = hips + (top - hips) * 0.02;
     this.frame = { cy: (top + bottom) / 2, h: top - bottom };
+    // 自動取景：平常只拍上半身（頭頂到腰），臉和手最大；手伸開時鏡頭退遠，收回再慢慢拉近
+    const la = this.b.LeftArm.getWorldPosition(new THREE.Vector3()), ra = this.b.RightArm.getWorldPosition(new THREE.Vector3());
+    this.cx = (la.x + ra.x) / 2; this.hipsY = hips;
+    this.minW = Math.abs(la.x - ra.x) * 1.9;   // 肩寬的 1.9 倍
+    this.camH = 0;
     this.camera = new THREE.PerspectiveCamera(26, 1, 0.05, 20);
     this.ready = true;
   }
@@ -255,13 +260,26 @@ export class Avatar3D {
     if (this._w === w && this._h === h) return;
     this._w = w; this._h = h;
     this.renderer.setSize(w, h, false);
-    const cam = this.camera; cam.aspect = w / h;
-    // 直的畫面要再退遠一點，手伸開才不會被切掉
-    const needH = Math.max(this.frame.h, (cam.aspect < 0.6 ? 0.88 : cam.aspect < 0.7 ? 0.95 : 1.1) / cam.aspect);   // 很直的手機畫面稍微拉近（雙手張開仍在畫面內）
-    const dist = needH / 2 / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
-    // 很直的畫面（面對面模式）：頭靠上方，多出來的空間放在腳下，不要讓頭上空一大片
-    const cy = this.frame.cy + (this.frame.h - needH) / 2;
-    cam.position.set(0, cy, dist); cam.lookAt(0, cy, 0); cam.updateProjectionMatrix();
+    const cam = this.camera; cam.aspect = w / h; cam.updateProjectionMatrix();
+    this.camH = 0;   // 畫面大小變了：馬上重新取景
+  }
+  // 每一格：看手在哪裡決定鏡頭遠近（頭頂固定在畫面上方）
+  frameCamera() {
+    const cam = this.camera, F = this.frame, v = this._v || (this._v = new THREE.Vector3());
+    let spread = 0, low = Infinity;
+    for (const k of ['LeftHand', 'RightHand', 'LeftHandMiddle1', 'RightHandMiddle1', 'LeftForeArm', 'RightForeArm']) {
+      const bn = this.b[k]; if (!bn) continue; bn.getWorldPosition(v);
+      if (v.y < this.hipsY - 0.12) continue;            // 垂在身體兩側的手不算（不然平常就會退很遠）
+      spread = Math.max(spread, Math.abs(v.x - this.cx) + (k.includes('Middle') ? 0.1 : 0));   // 指尖再往外約 10 公分
+      if (k.includes('Middle') && v.y > this.hipsY + 0.02) low = Math.min(low, v.y);   // 只有舉起來比到腰附近的手才往下多留
+    }
+    const W = Math.max(this.minW, 2 * (spread + 0.08));
+    const top = F.cy + F.h / 2;
+    const need = Math.max(F.h, W / cam.aspect, low < Infinity ? top - (low - 0.13) : 0);   // 手比到腰附近：往下多留一點
+    this.camH = !this.camH ? need : this.camH + (need - this.camH) * (need > this.camH ? 0.3 : 0.03);   // 退遠快、拉近慢
+    const cy = top - this.camH / 2;
+    const dist = this.camH / 2 / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
+    cam.position.set(this.cx, cy, dist); cam.lookAt(this.cx, cy, 0);
   }
 
   // f：已經過 normalizeSeq 的影格（y 往下）
@@ -269,6 +287,7 @@ export class Avatar3D {
     if (!this.ready) return;
     this.resize();
     this.pose(f);
+    this.frameCamera();
     if (this.hairClip) { this.b.Head.updateMatrixWorld(true); this.hairClip.local.forEach((p, i) => this.hairClip.world[i].copy(p).applyMatrix4(this.b.Head.matrixWorld)); }
     if (this.vrm && this.vrm.springBoneManager) {   // 頭髮、衣服自然擺動
       const now = performance.now(); this.vrm.springBoneManager.update(Math.min(0.05, (now - this.t) / 1000)); this.t = now;

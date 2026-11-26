@@ -9,7 +9,7 @@ import { toGloss, aiGloss, mapGloss, aiFluent } from './gloss.js';
 import { CloudSTT } from './stt.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.11.0';
+const VERSION = '0.12.0';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -21,16 +21,16 @@ let S = { ...DEF };
 try { S = { ...DEF, ...JSON.parse(localStorage.getItem('tsl-settings') || '{}') }; } catch {}
 // v0.5：預設改成 2D 插畫人像（之前選 3D 寫實的，換成同性別的 2D）
 if (!S.v5) { S.avatarKind = { female: '2d-f1', male: '2d-m1' }[S.avatarKind] || S.avatarKind; S.v5 = 1; }
-// v0.7：預設改成插畫風 3D 主播（VRM）
+// v0.7：預設改成插畫風 3D 手譯員（VRM）
 if (!S.v7) { S.avatarKind = { '2d-f1': 'vrm-f1', '2d-f2': 'vrm-f2', '2d-m1': 'vrm-m1', '2d-m2': 'vrm-m2', female: 'vrm-f1', male: 'vrm-m1' }[S.avatarKind] || S.avatarKind; S.v7 = 1; }
-// v0.7.3：使用者選定插畫風 A3（扁平色塊）；選單只留 6 位插畫風主播＋簡筆＋自訂，其他選項換成同性別的插畫風主播
+// v0.7.3：使用者選定插畫風 A3（扁平色塊）；選單只留 6 位插畫風手譯員＋簡筆＋自訂，其他選項換成同性別的插畫風手譯員
 if (S.v7 && !S.v8) { const k = S.avatarKind; if (!/^vrm-[fm][123]$/.test(k) && !['2d', 'custom'].includes(k)) S.avatarKind = /(^|-)m(\d|ale|$)/.test(k) ? 'vrm-m3' : 'vrm-f1'; S.v8 = 1; }   // 男：male、biz-m1、2d-m2、vrm-m3-flat…；female 不算
-// v0.7.4：主播只留 女（vrm-f1）、男（vrm-m3）
+// v0.7.4：手譯員只留 女（vrm-f1）、男（vrm-m3）
 if (S.v8 && !S.v9) { S.avatarKind = { 'vrm-f2': 'vrm-f1', 'vrm-f3': 'vrm-f1', 'vrm-m1': 'vrm-m3', 'vrm-m2': 'vrm-m3' }[S.avatarKind] || S.avatarKind; S.v9 = 1; }
 const saveS = () => { try { localStorage.setItem('tsl-settings', JSON.stringify(S)); } catch {} };
 saveS();
 const STYLE_KINDS = ['2d-f1', '2d-f2', '2d-m1', '2d-m2'];
-const REAL_KINDS = ['real-f1', 'real-f2', 'real-m1', 'real-m2'];   // 寫實主播（Colab 產生的影片）
+const REAL_KINDS = ['real-f1', 'real-f2', 'real-m1', 'real-m2'];   // 寫實手譯員（Colab 產生的影片）
 const aliasMap = () => Object.fromEntries(S.aliases.split('\n').map(l => l.split('=').map(x => x.trim())).filter(a => a.length === 2 && a[0] && a[1]));
 
 // ---------- 分頁 ----------
@@ -90,7 +90,7 @@ const AVATAR_URLS = {
   'toon-f': 'avatars/tw-female.glb#toon', 'toon-m': 'avatars/tw-male.glb#toon',
   // 成熟插畫風：Rocketbox 商務人士（MIT），貼圖做成插畫風＋卡通著色描邊
   'biz-f1': 'avatars/biz-f1.glb#toon', 'biz-f2': 'avatars/biz-f2.glb#toon', 'biz-m1': 'avatars/biz-m1.glb#toon', 'biz-m2': 'avatars/biz-m2.glb#toon',
-  // 同一位動漫主播換畫法
+  // 同一位動漫手譯員換畫法
   'vrm-f1-comic': 'avatars/vrm-f1.vrm#look=comic', 'vrm-f1-soft': 'avatars/vrm-f1.vrm#look=soft', 'vrm-f1-flat': 'avatars/vrm-f1.vrm#look=flat',
   'vrm-m3-comic': 'avatars/vrm-m3.vrm#tint=Tops:4a5470&look=comic', 'vrm-m3-soft': 'avatars/vrm-m3.vrm#tint=Tops:4a5470&look=soft', 'vrm-m3-flat': 'avatars/vrm-m3.vrm#tint=Tops:4a5470&look=flat',
   female: 'avatars/tw-female.glb',
@@ -104,7 +104,7 @@ async function applyAvatar() {
   player.style = preview.style = style;
   if (realOn) {
     const n = await real.load(style);
-    toast(n ? `寫實主播：${n} 個詞有影片，其他詞先用插畫人像` : '這位寫實主播還沒有影片（用 Colab 產生），先用插畫人像', 4000);
+    toast(n ? `寫實手譯員：${n} 個詞有影片，其他詞先用插畫人像` : '這位寫實手譯員還沒有影片（用 Colab 產生），先用插畫人像', 4000);
   } else real.off();
   const url = (S.avatarKind === '2d' || style) ? null : S.avatarKind === 'custom' ? S.avatarUrl.trim() || null : AVATAR_URLS[S.avatarKind] || AVATAR_URLS.female;
   if (url) $('avatarStatus').textContent = '3D 人像載入中…（第一次約 5 MB，之後會記住）';
@@ -377,7 +377,7 @@ async function startCam(size) {
 $('btnCam').onclick = () => camOn() ? stopCam() : startCam();
 
 // ---------- 面對面模式：手機立著，螢幕＋前鏡頭都對著聽損者 ----------
-// 主播全螢幕、右上角小視窗＝前鏡頭、上方字幕＝聽人說的話、下方字幕＝辨識出的手語中文
+// 手譯員全螢幕、右上角小視窗＝前鏡頭、上方字幕＝聽人說的話、下方字幕＝辨識出的手語中文
 let f2fOn = false, wakeLock = null, f2fHome = null;
 async function lockWake() {
   try { if ('wakeLock' in navigator && document.visibilityState === 'visible') { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } } catch {}
@@ -737,7 +737,7 @@ if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = fillSettings;
 fillSettings();
 $('addCat').onchange = e => { S.addCat = e.target.value; try { localStorage.setItem('tsl-settings', JSON.stringify(S)); } catch {} };
 $('avatarKind').onchange = e => { $('avatarUrl').hidden = e.target.value !== 'custom'; };
-$('verInfo').textContent = '版本 ' + VERSION; $('verFoot').textContent = $('f2fVer').textContent = '台灣手語對話翻譯器・版本 ' + VERSION;
+$('verInfo').textContent = '版本 ' + VERSION; $('verFoot').textContent = $('f2fVer').textContent = '主恢復台灣手語對話翻譯・版本 ' + VERSION;
 
 // ---------- PWA ----------
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

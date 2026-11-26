@@ -138,8 +138,10 @@ function drawCaption(ctx, caption, W, H, S) {
     ctx.font = `bold ${Math.round(S * 0.07)}px system-ui, "Noto Sans TC", sans-serif`;
     ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(47,51,67,.85)';
     const tw = ctx.measureText(caption).width + S * 0.06;
-    ctx.fillRect(W / 2 - tw / 2, H - S * 0.11, tw, S * 0.09);
-    ctx.fillStyle = '#fff'; ctx.fillText(caption, W / 2, H - S * 0.04);
+    // 很直的畫面（面對面模式、上半身特寫）：詞放右上角，不要蓋住比到腰附近的手
+    const tall = H > W * 1.1, cx = tall ? W - tw / 2 - S * 0.03 : W / 2, y0 = tall ? S * 0.03 : H - S * 0.11;
+    ctx.fillRect(cx - tw / 2, y0, tw, S * 0.09);
+    ctx.fillStyle = '#fff'; ctx.fillText(caption, cx, y0 + S * 0.07);
   }
 }
 function line2(ctx, a, b, c, d) { ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke(); }

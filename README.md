@@ -1,4 +1,4 @@
-# 台灣手語對話翻譯器（PWA）
+# 主恢復台灣手語對話翻譯（PWA）
 
 網站：https://tslinterpreter.pages.dev/ （Cloudflare Pages）・備用：https://isaiahovercomer.github.io/tsl-translator/
 
@@ -29,7 +29,7 @@
 - [台灣手語線上辭典](https://twtsl.ccu.edu.tw/)（中正大學，第五版 4600 詞、560 例句）：已溝通同意使用。`tools/ccu_dict.py` + Actions「匯入台灣手語線上辭典」把 3500 個詞條影片轉成骨架（影片不保存），同義詞放 `syn`、例句（手語語序↔中文）放 `corpus/dict/ccu-meta.json`。
   引用：蔡素娟、戴浩一、劉世凱、陳怡君。2026。《台灣手語線上辭典（中文版第五版）》。嘉義：國立中正大學手語語言學台灣研究中心。
 - 台灣手語語料庫（文化部委託中正大學，132 支影片、約 2 萬詞，有 Gloss 對照）：AI 詞序的訓練資料來源，需申請。
-- 工研院＋公視 AI 手語氣象主播、新竹市 AI 手語翻譯（2026/11）：文字 → 手語詞序（Gloss，LLM）→ 骨架 → 人像，同樣架構。
+- 工研院＋公視 AI 手語氣象手譯員、新竹市 AI 手語翻譯（2026/11）：文字 → 手語詞序（Gloss，LLM）→ 骨架 → 人像，同樣架構。
 
 ## 檔案
 - `index.html`、`js/app.js`：介面與流程

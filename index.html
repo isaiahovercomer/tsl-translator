@@ -3,11 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>台灣手語對話翻譯器</title>
+<title>主恢復台灣手語對話翻譯</title>
 <meta name="theme-color" content="#2F3343">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="description" content="說的話由手譯員比成台灣手語，比的手語由手機唸成中文。讓聽人和聽損者面對面聊天，一支手機打開網頁就能用。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="主恢復台灣手語對話翻譯">
+<meta property="og:title" content="主恢復台灣手語對話翻譯">
+<meta property="og:description" content="說的話 → 手譯員比台灣手語；比的手語 → 手機唸成中文。一支手機，打開網頁就能用。">
+<meta property="og:url" content="https://tslinterpreter.pages.dev/">
+<meta property="og:image" content="https://tslinterpreter.pages.dev/icons/og.jpg">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta property="og:locale" content="zh_TW">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://tslinterpreter.pages.dev/icons/og.jpg">
+<meta name="apple-mobile-web-app-title" content="主恢復手語翻譯">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/","@pixiv/three-vrm":"https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.6.0/lib/three-vrm.module.min.js"}}</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <style>
@@ -134,13 +146,14 @@ body.f2f-on{overflow:hidden}
 .light.busy{background:#c49356;color:#fff}.light.seen{background:rgba(29,33,48,.85);color:#9fe0bf}
 .light.warn{background:#c0503f;color:#fff}
 @keyframes pulse{50%{box-shadow:0 0 0 6px rgba(46,157,106,.25)}}
-/* 鏡頭小窗（右下，在主播腳的位置，不擋手） */
+/* 鏡頭小窗（右下，在手譯員腳的位置，不擋手） */
 .f2f-pip{position:absolute;right:calc(env(safe-area-inset-right) + 10px);bottom:calc(var(--barh,74px) + 10px);width:24vw;max-width:150px;aspect-ratio:3/4;border-radius:12px;overflow:hidden;border:3px solid #6b7287;z-index:3;background:#000;box-shadow:0 4px 14px rgba(0,0,0,.35)}
 .f2f-pip .stage{position:absolute;inset:0;aspect-ratio:auto;border-radius:0;background:#000}
 .f2f-pip .hint{display:none}
+#f2f .stage .realcap{top:calc(env(safe-area-inset-top) + 8px);bottom:auto;left:auto;right:10px;transform:none;font-size:1.15em}
 .f2f-pip.seen{border-color:#3fbf7f}.f2f-pip.lost{border-color:#e0574a}.f2f-pip.off{opacity:.35}
-/* 字幕（舞台下方，主播腳的位置） */
-.f2f-caps{position:absolute;left:0;right:0;bottom:var(--barh,74px);z-index:2;padding:40px calc(min(24vw,150px) + 22px) 10px 14px;background:linear-gradient(rgba(29,33,48,0),rgba(29,33,48,.82) 38%,rgba(29,33,48,.92));pointer-events:none;display:flex;flex-direction:column;gap:6px;min-height:calc(min(24vw,150px) * 4 / 3 + 20px);justify-content:flex-end}
+/* 字幕（手譯員下面一條，不蓋住手） */
+.f2f-caps{flex:none;position:relative;z-index:2;padding:10px calc(min(24vw,150px) + 22px) 10px 14px;background:#1d2130;display:flex;flex-direction:column;gap:6px;min-height:calc(min(24vw,150px) * 4 / 3 + 20px);justify-content:center}
 .f2f-hear{font-size:calc(clamp(21px,5.6vw,32px) * var(--fs));font-weight:700;line-height:1.35;max-height:calc(4.1em);overflow:hidden;display:flex;align-items:flex-end;text-shadow:0 1px 3px rgba(0,0,0,.5)}
 .f2f-hear .interim{color:#b7bfd4;font-weight:500;font-size:.8em}
 .f2f-sign{font-size:calc(clamp(18px,4.6vw,26px) * var(--fs));font-weight:600;line-height:1.35;max-height:4.2em;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;border-top:1px solid rgba(255,255,255,.18);padding-top:6px}
@@ -168,7 +181,7 @@ body.f2f-on{overflow:hidden}
 </head>
 <body>
 <header>
-  <h1><img src="icons/icon.svg" alt="">台灣手語對話翻譯器</h1>
+  <h1><img src="icons/icon.svg" alt="">主恢復台灣手語對話翻譯</h1>
   <nav>
     <a href="#talk" data-v="talk">💬 對話</a>
     <a href="#corpus" data-v="corpus">📚 語料庫</a>
@@ -197,7 +210,7 @@ body.f2f-on{overflow:hidden}
       <h2>和聽損者面對面聊天</h2>
       <ol class="steps">
         <li><b>1</b><span>手機<strong>立起來</strong>，螢幕和前鏡頭對著聽損者</span></li>
-        <li><b>2</b><span>聽人在旁邊正常說話，<strong>主播比手語</strong>給他看</span></li>
+        <li><b>2</b><span>聽人在旁邊正常說話，<strong>手譯員比手語</strong>給他看</span></li>
         <li><b>3</b><span>聽損者對著鏡頭比手語，手機<strong>唸出中文</strong></span></li>
       </ol>
       <button class="big" id="btnStart">▶ 開始對話</button>
@@ -209,10 +222,10 @@ body.f2f-on{overflow:hidden}
       <div class="hero-sub">會詢問鏡頭和麥克風權限・全螢幕、螢幕不休眠・<a href="#" id="btnF2F">只打開畫面</a></div>
     </div>
   </div>
-  <h3 class="sect">分開操作・測試 <span class="muted">打字讓主播比、單獨開麥克風或鏡頭</span></h3>
+  <h3 class="sect">分開操作・測試 <span class="muted">打字讓手譯員比、單獨開麥克風或鏡頭</span></h3>
   <div class="talk">
     <div class="card" id="pAvatar">
-      <h2>🗣️ 說話 → 手語主播</h2>
+      <h2>🗣️ 說話 → 手譯員</h2>
       <div class="stage"><canvas id="avatar"></canvas></div>
       <div class="caption" id="speechText"><span class="muted">按「開始聆聽」，說話就會即時轉成手語</span></div>
       <div class="chips" id="speechChips"></div>
@@ -364,14 +377,14 @@ body.f2f-on{overflow:hidden}
   <div class="grid2">
     <div class="card">
       <h2>⚙️ 設定</h2>
-      <div class="row"><label class="grow">手語主播：<select id="avatarKind" style="width:100%">
-        <option value="vrm-f1">插畫風主播：女</option>
-        <option value="vrm-m3">插畫風主播：男</option>
+      <div class="row"><label class="grow">手譯員：<select id="avatarKind" style="width:100%">
+        <option value="vrm-f1">插畫風手譯員：女</option>
+        <option value="vrm-m3">插畫風手譯員：男</option>
         <option value="2d">簡筆人像（最省電）</option>
         <option value="custom">3D 人像：自訂 .glb／.vrm 網址</option>
       </select></label></div>
       <input type="url" id="avatarUrl" placeholder="https://…/avatar.glb" hidden>
-      <label>主播比手語的速度：<b id="spVal"></b><input type="range" id="avatarSpeed" min="0.5" max="1.6" step="0.05"></label>
+      <label>手譯員比手語的速度：<b id="spVal"></b><input type="range" id="avatarSpeed" min="0.5" max="1.6" step="0.05"></label>
       <div class="row"><label class="grow">中文語音：<select id="voice" style="width:100%"></select></label></div>
       <label>語速：<b id="rtVal"></b><input type="range" id="rate" min="0.6" max="1.5" step="0.05"></label>
       <details class="adv"><summary>進階設定</summary>
@@ -395,9 +408,9 @@ body.f2f-on{overflow:hidden}
       <h2>📖 使用說明</h2>
       <ol>
         <li><b>開始對話</b>：在「對話」按「▶ 開始對話」，把手機立起來（可靠在杯子或手機架上），螢幕和前鏡頭對著聽損者。</li>
-        <li><b>聽人說話</b>：在手機旁邊正常說話，講完一句稍停一下；字幕出現在下方，主播把它比成台灣手語。左上角「🎤 聽到聲音」亮起，表示手機有收到。</li>
+        <li><b>聽人說話</b>：在手機旁邊正常說話，講完一句稍停一下；字幕出現在下方，手譯員把它比成台灣手語。左上角「🎤 聽到聲音」亮起，表示手機有收到。</li>
         <li><b>聽損者比手語</b>：對著鏡頭比，左上角「📷 看到手」亮起表示有拍到；比完的詞會用中文唸出來，停下來後整句換成通順中文。</li>
-        <li><b>會議一直講</b>：主播會照順序一句一句比；按 ⏸ 暫停、⏭ 跳下一句。字太小可按「Aa」放大。</li>
+        <li><b>會議一直講</b>：手譯員會照順序一句一句比；按 ⏸ 暫停、⏭ 跳下一句。字太小可按「Aa」放大。</li>
         <li>認錯的手語詞（紅色）可以在「分開操作」裡點一下改成正確的詞。</li>
       </ol>
       <p class="muted">語料庫已有中正大學台灣手語線上辭典約 3,500 個詞，還可以自己錄、上傳影片或貼 YouTube 網址增加（「新增語料」）。</p>
@@ -416,9 +429,9 @@ body.f2f-on{overflow:hidden}
     <button class="guide-skip" id="guideSkip">略過</button>
     <div class="gpage" data-p="hello">
       <div class="gicon">🤟</div>
-      <h2>歡迎使用<br>台灣手語對話翻譯器</h2>
+      <h2>歡迎使用<br>主恢復台灣手語對話翻譯</h2>
       <p>讓<b>聽人</b>和<b>聽損者</b>面對面聊天：</p>
-      <ul class="glist"><li>🗣️ 聽人說的話 → <b>主播比成台灣手語</b></li><li>🤟 聽損者比的手語 → <b>手機唸成中文</b></li></ul>
+      <ul class="glist"><li>🗣️ 聽人說的話 → <b>手譯員比成台灣手語</b></li><li>🤟 聽損者比的手語 → <b>手機唸成中文</b></li></ul>
       <p class="muted">只要一支手機，打開網頁就能用。</p>
     </div>
     <div class="gpage" data-p="place" hidden>
@@ -433,14 +446,14 @@ body.f2f-on{overflow:hidden}
         <path d="M160 60q8 12 0 24M170 54q14 18 0 36" stroke="#C49356" stroke-width="4" fill="none" stroke-linecap="round"/>
       </svg></div>
       <h2>手機這樣擺</h2>
-      <ul class="glist"><li>📱 手機<b>立起來</b>（靠在杯子或手機架上）</li><li>👀 <b>螢幕和前鏡頭對著聽損者</b>，他看主播、對鏡頭比手語</li><li>🗣️ 聽人坐在旁邊或對面，正常說話</li></ul>
+      <ul class="glist"><li>📱 手機<b>立起來</b>（靠在杯子或手機架上）</li><li>👀 <b>螢幕和前鏡頭對著聽損者</b>，他看手譯員、對鏡頭比手語</li><li>🗣️ 聽人坐在旁邊或對面，正常說話</li></ul>
     </div>
     <div class="gpage" data-p="use" hidden>
       <div class="gicon">💬</div>
       <h2>怎麼用</h2>
       <ul class="glist">
         <li>按 <b>▶ 開始對話</b>，手機同時聽和看</li>
-        <li>🗣️ 聽人<b>講完一句稍停一下</b>，字幕出現、主播開始比</li>
+        <li>🗣️ 聽人<b>講完一句稍停一下</b>，字幕出現、手譯員開始比</li>
         <li>🤟 聽損者<b>對著鏡頭比</b>，手機用中文唸出來</li>
         <li>左上角 <span class="glight">🎤 聽到聲音</span> <span class="glight">📷 看到手</span> 變綠色，表示有收到</li>
         <li>⏸ 暫停、⏭ 下一句、<b>Aa</b> 放大字幕</li>
@@ -482,7 +495,7 @@ body.f2f-on{overflow:hidden}
   <div class="f2f-status" id="f2fStatus" hidden></div>
   <div class="f2f-bar">
     <button class="primary" id="f2fGo">▶ 開始</button>
-    <button id="f2fPause" title="暫停／繼續主播">⏸</button>
+    <button id="f2fPause" title="暫停／繼續手譯員">⏸</button>
     <button id="f2fNext" title="下一句">⏭</button>
     <button id="f2fSize" title="字幕大小">Aa</button>
     <button id="f2fExit" title="離開面對面模式">✕</button>

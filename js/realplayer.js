@@ -1,4 +1,4 @@
-// realplayer.js — 寫實主播：每個詞一段事先算好的影片（Colab：colab/tsl_realistic.ipynb 產生，放在 realistic/<主播>/）
+// realplayer.js — 寫實手譯員：每個詞一段事先算好的影片（Colab：colab/tsl_realistic.ipynb 產生，放在 realistic/<手譯員>/）
 // 兩個 <video> 交替播放、淡入淡出接起來；沒有影片的詞交給原本的骨架人像（AvatarPlayer）比。
 export class RealPlayer {
   constructor(stage, avatarPlayer, { onWord = () => {}, onIdle = () => {} } = {}) {
@@ -13,7 +13,7 @@ export class RealPlayer {
     this.cap = document.createElement('div'); this.cap.className = 'realcap'; stage.appendChild(this.cap);
     this.cur = 0;
   }
-  // 載入某位主播的影片清單；沒有就回傳 0
+  // 載入某位手譯員的影片清單；沒有就回傳 0
   async load(presenter) {
     this.presenter = presenter; this.base = `realistic/${presenter}/`; this.manifest = {};
     try { const r = await fetch(this.base + 'manifest.json', { cache: 'no-cache' }); if (r.ok) this.manifest = await r.json(); } catch {}
@@ -22,7 +22,7 @@ export class RealPlayer {
   }
   off() { this.stop(); this.stage.classList.remove('realmode'); this.v.forEach(v => { v.style.opacity = 0; v.removeAttribute('src'); v.load(); }); this.cap.textContent = ''; }
   has(word) { return !!this.manifest[word]; }
-  // 待機：顯示主播圖
+  // 待機：顯示手譯員圖
   poster() { const v = this.v[this.cur]; v.poster = this.base + 'presenter.png'; if (!v.src) v.style.opacity = 1; }
   url(word) { return this.base + this.manifest[word].file; }
   // items: [{word, frames, aspect}]（沒有影片的詞用骨架）
