@@ -1,7 +1,7 @@
 // 用中正辭典 546 句例句檢查「中文 → 手語詞序」規則：比原本逐詞（照中文語序）好多少
 // node tools/eval_gloss.mjs [--show 20]
 import { readFileSync } from 'node:fs';
-import { toGloss, DROP } from '../js/gloss.js';
+import { toGloss, DROP, mapGloss } from '../js/gloss.js';
 import { tokenize } from '../js/core.js';
 const ix = JSON.parse(readFileSync(new URL('../corpus/index.json', import.meta.url)));
 const vocab = [...new Set(ix.signs.flatMap(s => [s.word, ...(s.syn || [])]))];
@@ -47,7 +47,9 @@ if (ai > 0) {
   const N = +process.argv[ai + 1] || 40, base = process.env.GLOSS_URL || 'https://tslinterpreter.pages.dev/api/gloss';
   const pick = ex.filter((_, i) => i % 9 === 0).slice(0, N);
   let C = [0, 0], R = [0, 0], last = 0, n = 0, wa = [0, 0], wr = [0, 0];
-  const model = process.env.GLOSS_MODEL ? '&model=' + encodeURIComponent(process.env.GLOSS_MODEL) : '';
+  const model = (process.env.GLOSS_MODEL ? '&model=' + encodeURIComponent(process.env.GLOSS_MODEL) : '') + (process.env.GLOSS_Q || '');
+  // 實際會比的詞：AI 輸出 → mapGloss 換成語料庫的詞（沒有的詞拆開或丟掉）
+  let mh = [0, 0], mp = [0, 0], unk = [0, 0];
   const hitw = (o, G) => { const g = new Set(G); return [o.filter(w => g.has(w)).length, G.length]; };
   for (const s of pick) {
     const G = clean(s.gloss);
@@ -56,8 +58,14 @@ if (ai > 0) {
       if (!r.gloss) { console.log('失敗', s.translation, r); continue; }
       const rw = toGloss(s.translation, vocab).tokens.map(t => t.word), a = pairAgree(r.gloss, G), b = pairAgree(rw, G);
       const h1 = hitw(r.gloss, G), h2 = hitw(rw, G); wa[0] += h1[0]; wa[1] += h1[1]; wr[0] += h2[0]; wr[1] += h2[1];
+      const toks = mapGloss(r.gloss, vocab), play = toks.filter(t => t.known).map(t => t.word), g = new Set(G);
+      mh[0] += G.filter(w => play.includes(w)).length; mh[1] += G.length;      // 手語詞有比到幾成（召回）
+      mp[0] += play.filter(w => g.has(w)).length; mp[1] += play.length;      // 比的詞有幾成是對的（精確）
+      unk[0] += toks.filter(t => !t.known).length; unk[1] += toks.length;   // 語料庫沒有、比不出來的
+      if (process.env.SHOW) console.log(s.translation, '\n  手語:', G.join('/'), '\n  AI  :', r.gloss.join('/'), '\n  比  :', play.join('/'));
       C[0] += a[0]; C[1] += a[1]; R[0] += b[0]; R[1] += b[1]; n++; if (r.gloss.at(-1) === G.at(-1)) last++;
     } catch (e) { console.log('錯誤', e.message); }
   }
+  console.log(`實際比的詞（換成語料庫詞後）：召回 ${pct(mh)}、精確 ${pct(mp)}、比不出來 ${pct(unk)}`);
   console.log(`AI 評估 ${n} 句：詞序一致 規則 ${pct(R)} → AI ${pct(C)}；用對手語詞 規則 ${pct(wr)} → AI ${pct(wa)}；句尾詞正確 ${(100 * last / n).toFixed(1)}%`);
 }

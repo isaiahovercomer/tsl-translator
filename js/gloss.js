@@ -114,13 +114,16 @@ export async function aiFluent(words, { timeout = 4000, endpoint = 'api/fluent' 
   } catch { return null; } finally { clearTimeout(tm); }
 }
 
+const VAR = Object.fromEntries('布佈 台臺 裡裏 著着 群羣 線綫 秘祕 嘆歎 汙污 峰峯 姊姐 啟啓 床牀 鉤鈎 痺痹'.split(' ').flatMap(p => [[p[0], p[1]], [p[1], p[0]]]));
+const variants = w => [...w].map((c, i) => VAR[c] ? w.slice(0, i) + VAR[c] + w.slice(i + 1) : null).filter(Boolean);
 /** AI 給的 gloss 詞 → 語料庫的詞（沒有的詞再用最長比對拆開） */
 export function mapGloss(gloss, vocab, aliases = {}) {
   const have = new Set(vocab), out = [];
   for (const g0 of gloss) {
     const g = g0.replace(/_[A-Z0-9]+$/, '').trim();
     if (!g || DROP.has(g)) continue;
-    const w = aliases[g] || g;
+    let w = aliases[g] || g;
+    if (!have.has(w)) w = variants(w).find(v => have.has(v)) || w;   // 異體字：宣布→宣佈
     if (have.has(w)) { out.push({ text: g, word: w, known: true }); continue; }
     for (const t of tokenize(g, vocab, aliases)) out.push({ text: t.text, word: t.word || t.text, known: !!t.known });
   }
