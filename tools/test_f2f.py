@@ -31,6 +31,7 @@ with sync_playwright() as p:
     pg = ctx.new_page()
     pg.on('pageerror', lambda e: errors.append(str(e)))
     pg.on('console', lambda m: m.type == 'error' and errors.append('console: ' + m.text))
+    pg.on('response', lambda r: r.status == 404 and errors.append('404: ' + r.url))
     pg.goto(BASE + 'index.html')
     pg.wait_for_function('window.__tsl && window.__tsl.samples.length > 0', timeout=60000)
     pg.wait_for_timeout(6000)   # 3D 主播載入

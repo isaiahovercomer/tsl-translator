@@ -1,5 +1,15 @@
-# 交接報告：台灣手語對話翻譯器（2026-11-26 傍晚，v0.8.1）
+# 交接報告：台灣手語對話翻譯器（2026-11-26 晚上，v0.9.0）
 
+## v0.9.0：雲端 Whisper 語音辨識（聽人說話 → 文字）
+- 起因：瀏覽器內建辨識（Web Speech API）收音困難、連續聽會斷、LINE 內建瀏覽器不支援。
+- `functions/api/stt.js`：POST 16kHz 單聲道 WAV → Workers AI `@cf/openai/whisper-large-v3-turbo`（language zh、vad_filter、召會用語 initial_prompt＋前一句 `x-prompt`、condition_on_previous_text false）。輸出處理：簡轉繁（`_s2t.json`：opencc-js 產生的 2600 字單字表＋常見轉錯詞；「台」不轉「臺」）、全形標點、召會用語同音字更正（招會→召會、小牌→小排…，`FIX`）、過濾 Whisper 幻覺句（訂閱、字幕、Amara…）。`?beam=1` 可試較快解碼（實測沒差，延遲主要是 Cloudflare 排隊，1～4.5 秒）。
+- `js/stt.js`（`CloudSTT`）：getUserMedia（回音消除、降噪、自動增益）→ ScriptProcessor（iPhone 也能用）→ 背景音量自動學習的簡單 VAD：連續 2 格（約 0.17 秒）大聲開始、停頓 0.7 秒或滿 12 秒切句、少於 0.35 秒的聲音丟掉 → 16kHz WAV 上傳；同時可多句送出，照說話順序交回。TTS 唸的時候 `pause()`。
+- `js/app.js`：設定「語音辨識」選單（`S.sttEngine`：cloud 預設／browser）；GitHub Pages 備用站或 API 回 404/405/503 時自動改用瀏覽器內建。上一句辨識結果留在畫面，狀態（🎙️ 聽到聲音…／⏳ 辨識中…）用小字接在後面。
+- 測試：`python3 tools/test_stt.py`（Piper 合成兩句中文、中間停 1.5 秒當假麥克風 `/tmp/t/mic.wav`；網站檔案用本機、/api 走線上）：4 句都正確切開、照順序、沒漏。合成語音腔調生硬，「機車」會聽成「記憶車」，真人聲音要實測。
+- 費用：每分鐘音訊約 0.0005 美元；Workers AI 每天免費 10,000 neurons（turbo 每分鐘 46.63 → 約 200 分鐘，和詞序／通順中文共用）。
+- 待做：真手機實測（尤其 iPhone Safari：AudioContext 要在按鈕點擊後才啟動，已在按鈕裡呼叫）；若延遲太長可考慮更短的停頓（0.6 秒）或串流式模型。
+
+## v0.8.1（之前）
 ## v0.8.1：詞序 AI 改用語料庫的詞
 - `/api/gloss` 給 AI「可用手語詞」清單（`candidates()`：句子裡出現的語料庫詞優先，其次共用字比例 ≥0.6 的詞，最多 120 個），請 AI 把不在語料庫的中文詞換成清單裡意思相同的詞或拆開（住校→住/學校、洞穴→山洞）。輸出再做異體字對應（`fixWord`：宣布→宣佈）；前端 `mapGloss` 也加了異體字。`?v=1` 可用舊做法比較。
 - 評估多了「實際比的詞」（AI 輸出 → mapGloss → 會比的詞，對照辭典手語）：`node tools/eval_gloss.mjs --ai 61`（`GLOSS_Q='&v=1'` 跑舊做法，`SHOW=1` 看每句）。
@@ -101,7 +111,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.8.1
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.9.0
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。
