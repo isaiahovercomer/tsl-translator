@@ -10,7 +10,7 @@ import { SCENES, SCENE_ORDER, sceneWords } from './scenes.js';
 import { CloudSTT } from './stt.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.13.0';
+const VERSION = '0.13.1';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

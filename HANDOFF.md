@@ -1,4 +1,6 @@
-# 交接報告：主恢復台灣手語對話翻譯（2026-11-26 晚上，v0.13.0）
+# 交接報告：主恢復台灣手語對話翻譯（2026-11-26 晚上，v0.13.1）
+
+## v0.13.1：AI 挑詞的句子把半形「?」換成全形「？」（辭典詞「幾點?」帶問號）。線上實測：我|你/跑步|游泳/會|要 → 我會跑步；明天|今天/開會|聚會|吃飯/幾點?|多少（情境聚會）→ 明天聚會幾點？；你|我/名字|字/什麼|誰|哪裡 → 你叫什麼名字。
 
 ## v0.13.0：手語 → 中文語音辨識優化（手機前鏡頭不靈敏、湊不成句子）
 1. **情境選單**（`js/scenes.js`）：寒暄常用／聚會／召會生活／全部詞彙。只在情境常用詞裡找（基本詞＋情境詞，語料庫沒有的詞自動略過；自己錄的本機語料每個情境都有；召會生活另含 cat=church 全部語料）。寒暄 146 詞。
@@ -173,7 +175,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.13.0
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.13.1
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。

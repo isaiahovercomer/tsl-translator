@@ -150,5 +150,5 @@ function parseCand(raw, cands) {
     let k = j; while (k < want.length && k < j + 2 && !c.includes(want[k])) k++;
     if (k < want.length && c.includes(want[k])) { pick.push(want[k]); j = k + 1; } else pick.push(null);
   }
-  return { text: text.slice(0, 120), pick };
+  return { text: text.replace(/\?/g, '？').slice(0, 120), pick };
 }
