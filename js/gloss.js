@@ -106,7 +106,7 @@ export function mapGloss(gloss, vocab, aliases = {}) {
   const have = new Set(vocab), out = [];
   for (const g0 of gloss) {
     const g = g0.replace(/_[A-Z0-9]+$/, '').trim();
-    if (!g) continue;
+    if (!g || DROP.has(g)) continue;
     const w = aliases[g] || g;
     if (have.has(w)) { out.push({ text: g, word: w, known: true }); continue; }
     for (const t of tokenize(g, vocab, aliases)) out.push({ text: t.text, word: t.word || t.text, known: !!t.known });
