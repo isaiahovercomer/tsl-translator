@@ -1,4 +1,8 @@
-# 交接報告：台灣手語對話翻譯器（2026-11-26 下午，v0.7.2）
+# 交接報告：台灣手語對話翻譯器（2026-11-26 下午，v0.7.3）
+
+## v0.7.3：使用者選定畫風 **A3 扁平色塊**
+- 6 位 VRoid 主播全部套 `look=flat`（app.js AVATAR_URLS），預設 vrm-f1。選單只留 6 位插畫風主播＋簡筆＋自訂；其他舊選項（3D 寫實、商務主播、2D 卡通、Colab 寫實影片、其他畫法）程式還在但不在選單，舊設定自動換成同性別插畫風主播（S.v8）。
+- 待使用者選：女生、男生各要哪一位當主要主播（比較圖 gallery_a3）。之後：面對面模式（見下方「使用者目標」）。
 
 ## v0.7.2（使用者問「不能有其他畫風嗎」→ 做 A 換畫法＋B 成熟大人）
 - A：VRM 換畫法 `#look=comic|soft|flat`（avatar3d.js `applyLook`，改 MToon 參數）；差異不大。
@@ -68,7 +72,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.7.2
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.7.3
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。
