@@ -1,0 +1,116 @@
+name: 批次匯入 YouTube 頻道（影片＋字幕→骨架）
+
+# 手動執行：Actions → 批次匯入 YouTube 頻道 → Run workflow
+# 列出頻道／播放清單 → 分幾份同時下載影片與字幕、抽骨架（影片抽完即刪）→ 合併成一次提交。
+# 需要 repo secret YT_COOKIES（Get cookies.txt LOCALLY 匯出的內容）。
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 頻道或播放清單網址
+        default: https://www.youtube.com/@江啟禎/videos
+      match:
+        description: 只匯入標題符合的影片（正規表示式，空白＝全部）
+        default: 晨興聖言
+        required: false
+      max:
+        description: 這次最多幾支
+        default: '12'
+      shards:
+        description: 分幾份同時跑（最多 20）
+        default: '6'
+      category:
+        description: 分類（church＝召會生活用語、general＝一般生活用語）
+        default: church
+
+permissions:
+  contents: write
+
+concurrency:
+  group: corpus-ingest
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      shards: ${{ steps.p.outputs.shards }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -U yt-dlp numpy
+      - uses: denoland/setup-deno@v2
+      - name: 列出影片
+        env:
+          YT_COOKIES: ${{ secrets.YT_COOKIES }}
+        run: python tools/yt_batch.py list "${{ inputs.url }}" --match "${{ inputs.match }}" --max ${{ inputs.max }} --out list.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yt-list
+          path: list.json
+          retention-days: 3
+      - id: p
+        run: |
+          n=$(python3 -c "import json;print(max(1,min(${{ inputs.shards }},len(json.load(open('list.json'))))))")
+          echo "shards=$(python3 -c "import json;print(json.dumps(list(range($n))))")" >> "$GITHUB_OUTPUT"
+          echo "n=$n" >> "$GITHUB_OUTPUT"
+
+  extract:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+      - run: pip install -r tools/requirements.txt && pip install -U yt-dlp
+      - uses: denoland/setup-deno@v2
+      - name: 模型快取
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/tsl-models
+          key: tsl-models-v1
+      - uses: actions/download-artifact@v4
+        with:
+          name: yt-list
+      - name: 下載、抽骨架（第 ${{ matrix.shard }} 份）
+        env:
+          YT_COOKIES: ${{ secrets.YT_COOKIES }}
+        run: python tools/yt_batch.py extract --list list.json --shard ${{ matrix.shard }} --of ${{ strategy.job-total }} --cat ${{ inputs.category }} --out out/${{ matrix.shard }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yt-${{ matrix.shard }}
+          path: out/${{ matrix.shard }}
+          retention-days: 3
+
+  merge:
+    needs: extract
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install numpy
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          pattern: yt-[0-9]*
+      - name: 合併
+        run: python tools/yt_batch.py merge out/*
+      - name: 存回 repo
+        run: |
+          git config user.name "tsl-corpus-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add corpus
+          git diff --cached --quiet || (git commit -m "語料：批次匯入 ${{ inputs.url }}（${{ inputs.match }}）" && git pull --rebase && git push)
