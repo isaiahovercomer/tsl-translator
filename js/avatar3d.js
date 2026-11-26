@@ -257,7 +257,7 @@ export class Avatar3D {
     this.renderer.setSize(w, h, false);
     const cam = this.camera; cam.aspect = w / h;
     // 直的畫面要再退遠一點，手伸開才不會被切掉
-    const needH = Math.max(this.frame.h, (cam.aspect < 0.7 ? 0.95 : 1.1) / cam.aspect);   // 很直的手機畫面稍微拉近（雙手張開仍在畫面內）
+    const needH = Math.max(this.frame.h, (cam.aspect < 0.6 ? 0.88 : cam.aspect < 0.7 ? 0.95 : 1.1) / cam.aspect);   // 很直的手機畫面稍微拉近（雙手張開仍在畫面內）
     const dist = needH / 2 / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
     // 很直的畫面（面對面模式）：頭靠上方，多出來的空間放在腳下，不要讓頭上空一大片
     const cy = this.frame.cy + (this.frame.h - needH) / 2;

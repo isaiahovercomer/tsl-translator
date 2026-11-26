@@ -1,5 +1,16 @@
-# 交接報告：台灣手語對話翻譯器（2026-11-26 晚上，v0.9.0）
+# 交接報告：台灣手語對話翻譯器（2026-11-26 晚上，v0.10.0）
 
+## v0.10.0：介面改版（往「手機立著對聾人、一鍵開始」的目標）
+- **首頁**（對話頁最上方 `.hero`）：插圖＋三步驟（手機立起來／聽人說話主播比／聾人比手機唸）＋大按鈕「▶ 開始對話」（`#btnStart`：同一次點擊裡 enterF2F＋開麥克風＋前鏡頭，瀏覽器才給權限和全螢幕）；「只打開畫面，等一下再開始」＝ `#btnF2F`（現在是連結）。原本兩個面板移到下面「分開操作・測試」。
+- **面對面模式版面**：舞台佔滿整個畫面、主播頭靠上方（avatar3d 很直的畫面寬度需求 0.88）；字幕（聽人說的話＋🤟 手語那句）疊在下方主播腳的位置（漸層底），鏡頭小窗移到右下（不擋手）。按鈕列高度用 `--barh` 量。
+- **狀態燈**（左上）：🎤 麥克風關／聆聽中／聽到聲音（綠色閃）／⏳ 辨識中；📷 鏡頭關／請比手語／看到人／看到手（綠）／請入鏡（沒拍到人超過 4 秒，紅）。雲端 Whisper 用 CloudSTT 的 onState，瀏覽器內建用 interim 結果。
+- **Aa**：字幕大小 1／1.25／1.5 倍循環（`S.f2fSize`，CSS `--fs`）。
+- 修好對話頁橫向捲動（`.talk>*{min-width:0}`，原本寬 415px）。
+- **語料庫**：一次只畫 150 個詞，「顯示更多」每次加 300（原本 3488 個全畫，頁面 9 萬多 px）；預覽框移到清單上面（點詞會捲過去）。
+- **設定**：常用（主播、比手語速度、中文語音、語速）＋「進階設定」摺疊（語音辨識、詞序、分類優先、手語辨識嚴格度、同義說法）；使用說明改寫成目前的流程。
+- 截圖檢查腳本：`tools/shots_all.py`（各頁手機尺寸截圖），面對面回歸測試 `tools/test_f2f.py` 通過。
+
+## v0.9.0（之前）
 ## v0.9.0：雲端 Whisper 語音辨識（聽人說話 → 文字）
 - 起因：瀏覽器內建辨識（Web Speech API）收音困難、連續聽會斷、LINE 內建瀏覽器不支援。
 - `functions/api/stt.js`：POST 16kHz 單聲道 WAV → Workers AI `@cf/openai/whisper-large-v3-turbo`（language zh、vad_filter、召會用語 initial_prompt＋前一句 `x-prompt`、condition_on_previous_text false）。輸出處理：簡轉繁（`_s2t.json`：opencc-js 產生的 2600 字單字表＋常見轉錯詞；「台」不轉「臺」）、全形標點、召會用語同音字更正（招會→召會、小牌→小排…，`FIX`）、過濾 Whisper 幻覺句（訂閱、字幕、Amara…）。`?beam=1` 可試較快解碼（實測沒差，延遲主要是 Cloudflare 排隊，1～4.5 秒）。
@@ -111,7 +122,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.9.0
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.10.0
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。

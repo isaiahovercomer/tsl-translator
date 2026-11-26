@@ -79,35 +79,65 @@ code{background:#eee8dc;padding:1px 5px;border-radius:5px}
 .verfoot{text-align:center;color:var(--muted);font-size:12px;padding:10px 0 calc(env(safe-area-inset-bottom) + 12px)}
 #pAvatar .stage{background:linear-gradient(#d5e1ec,#b9cad9)}
 .stage.realmode{aspect-ratio:3/4;max-height:72vh;margin:0 auto}.stage video.real{object-fit:contain;background:#dfe8f1;transition:opacity .15s}
+/* 首頁 */
+.hero{display:flex;gap:14px;align-items:center;background:linear-gradient(135deg,#2F3343,#3c4258);color:#fff;border-radius:18px;padding:18px 16px;margin-bottom:14px;box-shadow:0 6px 20px rgba(47,51,67,.18)}
+.hero-art{flex:0 0 34%;max-width:230px;aspect-ratio:4/3}
+.hero-body{flex:1;min-width:0}
+.hero h2{margin:0 0 10px;font-size:clamp(22px,5.6vw,30px);letter-spacing:1px}
+.steps{list-style:none;margin:0 0 14px;padding:0;display:flex;flex-direction:column;gap:8px}
+.steps li{display:flex;gap:10px;align-items:flex-start;font-size:15.5px;line-height:1.45}
+.steps li b{flex:none;width:24px;height:24px;border-radius:50%;background:var(--gold);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;margin-top:1px}
+.steps strong{color:#ffd9a8}
+button.big{width:100%;justify-content:center;font-size:21px;font-weight:700;padding:14px 18px;background:var(--gold);border-color:var(--gold);color:#fff;box-shadow:0 4px 14px rgba(196,147,86,.45)}
+button.big:active{transform:scale(.98)}
+.hero-sub{font-size:13px;color:#b9bfd0;margin-top:8px;text-align:center}.hero-sub a{color:#ffd9a8}
+@media (max-width:520px){.hero{flex-direction:column;text-align:left}.hero-art{flex:none;width:52%;max-width:200px;margin:-4px auto -6px}}
+h3.sect{font-size:15px;margin:18px 4px 8px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.talk>*{min-width:0}
+.preview{border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:10px;background:#fbf8f2}
+details.adv{margin-top:12px;border-top:1px dashed var(--line);padding-top:10px}
 /* 面對面模式 */
-.f2fbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .signlog small,.f2f-sign small{display:block;font-size:.72em;color:var(--muted);font-weight:400}
 body.f2f-on{overflow:hidden}
-#f2f{position:fixed;inset:0;z-index:30;background:#1d2130;color:#fff;display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
-.f2f-hear{flex:none;padding:10px 14px;font-size:clamp(20px,5.4vw,30px);font-weight:700;line-height:1.35;min-height:2.9em;max-height:4.2em;overflow:hidden;display:flex;align-items:flex-end;background:#1d2130}
-.f2f-hear .interim{color:#aab2c8;font-weight:500}
+#f2f{position:fixed;inset:0;z-index:30;background:#1d2130;color:#fff;display:flex;flex-direction:column;--fs:1}
 .f2f-stage{flex:1 1 auto;min-height:0;position:relative}
 .f2f-stage .stage{position:absolute;inset:0;aspect-ratio:auto;border-radius:0;max-height:none;margin:0;background:linear-gradient(#d5e1ec,#b9cad9)}
-.f2f-pip{position:absolute;top:calc(env(safe-area-inset-top) + 8px);right:calc(env(safe-area-inset-right) + 8px);width:26vw;max-width:170px;aspect-ratio:3/4;border-radius:12px;overflow:hidden;border:3px solid #6b7287;z-index:2;background:#000}
+/* 狀態燈（左上） */
+.f2f-lights{position:absolute;top:calc(env(safe-area-inset-top) + 8px);left:calc(env(safe-area-inset-left) + 8px);display:flex;flex-direction:column;gap:6px;z-index:3;pointer-events:none}
+.light{background:rgba(29,33,48,.72);color:#c9cede;padding:4px 10px;border-radius:99px;font-size:13px;font-weight:600;backdrop-filter:blur(4px);width:max-content}
+.light.on{background:rgba(29,33,48,.85);color:#fff}
+.light.hot{background:#2e9d6a;color:#fff;animation:pulse 1s ease-in-out infinite}
+.light.busy{background:#c49356;color:#fff}.light.seen{background:rgba(29,33,48,.85);color:#9fe0bf}
+.light.warn{background:#c0503f;color:#fff}
+@keyframes pulse{50%{box-shadow:0 0 0 6px rgba(46,157,106,.25)}}
+/* 鏡頭小窗（右下，在主播腳的位置，不擋手） */
+.f2f-pip{position:absolute;right:calc(env(safe-area-inset-right) + 10px);bottom:calc(var(--barh,74px) + 10px);width:24vw;max-width:150px;aspect-ratio:3/4;border-radius:12px;overflow:hidden;border:3px solid #6b7287;z-index:3;background:#000;box-shadow:0 4px 14px rgba(0,0,0,.35)}
 .f2f-pip .stage{position:absolute;inset:0;aspect-ratio:auto;border-radius:0;background:#000}
 .f2f-pip .hint{display:none}
 .f2f-pip.seen{border-color:#3fbf7f}.f2f-pip.lost{border-color:#e0574a}.f2f-pip.off{opacity:.35}
-.f2f-hear{padding-right:calc(min(26vw,170px) + 22px)}
-.f2f-sign{flex:none;padding:8px 14px;font-size:clamp(18px,4.8vw,26px);font-weight:600;line-height:1.35;max-height:5.4em;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;background:#262b3d;border-top:1px solid #39405a}
-.f2f-sign.empty{min-height:0;padding:0;border:0}
-.f2f-sign .cur{color:#ffb3a8}.f2f-sign small{color:#9aa3bb}
-.f2f-status{flex:none;padding:4px 14px;font-size:14px;color:#ffd38a;background:#262b3d}
-.f2f-bar{flex:none;display:flex;gap:10px;justify-content:center;padding:10px 12px 8px;background:#262b3d}
-.f2f-bar button{font-size:18px;padding:10px 18px;background:#384058;color:#fff;border-color:#4b5470}
-.f2f-bar button.primary{background:#fff;color:var(--ink);border-color:#fff;flex:1;max-width:260px;justify-content:center}
-.f2f-bar button.rec{background:var(--brick);border-color:var(--brick);color:#fff;flex:1;max-width:260px;justify-content:center}
-.f2f-ver{flex:none;text-align:center;font-size:11px;color:#7c849c;padding-bottom:4px;background:#262b3d}
+/* 字幕（舞台下方，主播腳的位置） */
+.f2f-caps{position:absolute;left:0;right:0;bottom:var(--barh,74px);z-index:2;padding:40px calc(min(24vw,150px) + 22px) 10px 14px;background:linear-gradient(rgba(29,33,48,0),rgba(29,33,48,.82) 38%,rgba(29,33,48,.92));pointer-events:none;display:flex;flex-direction:column;gap:6px;min-height:calc(min(24vw,150px) * 4 / 3 + 20px);justify-content:flex-end}
+.f2f-hear{font-size:calc(clamp(21px,5.6vw,32px) * var(--fs));font-weight:700;line-height:1.35;max-height:calc(4.1em);overflow:hidden;display:flex;align-items:flex-end;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+.f2f-hear .interim{color:#b7bfd4;font-weight:500;font-size:.8em}
+.f2f-sign{font-size:calc(clamp(18px,4.6vw,26px) * var(--fs));font-weight:600;line-height:1.35;max-height:4.2em;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;border-top:1px solid rgba(255,255,255,.18);padding-top:6px}
+.f2f-sign.empty{display:none}
+.f2f-sign::before{content:'🤟 手語';font-size:12px;color:#ffd9a8;font-weight:600}
+.f2f-sign .cur{color:#ffb3a8}.f2f-sign small{color:#a9b1c6}
+.f2f-status{position:absolute;left:0;right:0;top:calc(env(safe-area-inset-top) + 74px);margin:0 auto;width:max-content;max-width:90%;z-index:4;padding:6px 14px;border-radius:99px;font-size:14px;color:#1d2130;background:#ffd38a}
+.f2f-bar{flex:none;display:flex;gap:8px;justify-content:center;padding:10px 10px calc(env(safe-area-inset-bottom) + 4px);background:#262b3d}
+.f2f-bar button{font-size:18px;padding:10px 14px;background:#384058;color:#fff;border-color:#4b5470;min-width:48px;justify-content:center;white-space:nowrap}
+.f2f-bar button.primary{background:var(--gold);color:#fff;border-color:var(--gold);flex:1;max-width:240px;font-weight:700}
+.f2f-bar button.rec{background:var(--brick);border-color:var(--brick);color:#fff;flex:1;max-width:240px}
+.f2f-ver{flex:none;text-align:center;font-size:10px;color:#7c849c;padding-bottom:calc(env(safe-area-inset-bottom) + 2px);background:#262b3d}
 @media (orientation:landscape){
-  #f2f{display:grid;grid-template-columns:1fr minmax(260px,38%);grid-template-rows:auto 1fr auto auto auto;grid-template-areas:"stage hear" "stage sign" "stage status" "stage bar" "stage ver"}
-  .f2f-stage{grid-area:stage}.f2f-hear{grid-area:hear;padding-right:14px;max-height:none;align-items:flex-start;font-size:clamp(18px,3vw,28px)}
-  .f2f-sign{grid-area:sign;max-height:none;border-top:0;background:#1d2130;font-size:clamp(17px,2.6vw,24px)}.f2f-sign.empty{padding:0}
-  .f2f-status{grid-area:status}.f2f-bar{grid-area:bar}.f2f-ver{grid-area:ver}
-  .f2f-pip{width:auto;height:34vh;max-width:none;right:auto;left:calc(env(safe-area-inset-left) + 8px)}
+  #f2f{display:grid;grid-template-columns:1fr minmax(260px,38%);grid-template-rows:1fr auto auto;grid-template-areas:"stage caps" "stage bar" "stage ver"}
+  .f2f-stage{grid-area:stage}.f2f-bar{grid-area:bar}.f2f-ver{grid-area:ver}
+  .f2f-caps{grid-area:caps;position:static;padding:14px;background:#1d2130;min-height:0;justify-content:flex-start}
+  .f2f-hear{font-size:calc(clamp(18px,3vw,28px) * var(--fs));max-height:none;align-items:flex-start}
+  .f2f-sign{font-size:calc(clamp(17px,2.6vw,24px) * var(--fs));max-height:none}
+  .f2f-pip{width:auto;height:34vh;max-width:none;right:auto;left:calc(env(safe-area-inset-left) + 8px);bottom:8px}
+  .f2f-lights{left:auto;right:calc(38% + 8px);align-items:flex-end}
+  .f2f-bar{gap:6px}.f2f-bar button{font-size:16px;padding:8px 10px;min-width:42px}
 }
 .stage .realcap{position:absolute;left:50%;bottom:4%;transform:translateX(-50%);background:rgba(30,34,48,.8);color:#fff;font-weight:700;padding:.2em .8em;border-radius:99px;font-size:1.3em}.stage .realcap:empty{display:none}.stage.skel .realcap{display:none}.qbar select{flex:1 1 100%}
 </style>
@@ -116,23 +146,44 @@ body.f2f-on{overflow:hidden}
 <header>
   <h1><img src="icons/icon.svg" alt="">台灣手語對話翻譯器</h1>
   <nav>
-    <a href="#talk" data-v="talk">對話</a>
-    <a href="#corpus" data-v="corpus">語料庫</a>
-    <a href="#add" data-v="add">新增語料</a>
-    <a href="#settings" data-v="settings">設定與說明</a>
+    <a href="#talk" data-v="talk">💬 對話</a>
+    <a href="#corpus" data-v="corpus">📚 語料庫</a>
+    <a href="#add" data-v="add">➕ 新增語料</a>
+    <a href="#settings" data-v="settings">⚙️ 設定</a>
   </nav>
 </header>
 <main>
 
 <!-- 對話 -->
 <section class="view" id="v-talk">
-  <div class="card f2fbar">
-    <button class="primary" id="btnF2F">🧑‍🤝‍🧑 面對面模式</button>
-    <span class="muted">手機立著、螢幕和前鏡頭對著聾人：一面聽人說話比給他看，一面看他比手語唸出來。全螢幕、螢幕不休眠。</span>
+  <div class="hero">
+    <div class="hero-art" aria-hidden="true">
+      <svg viewBox="0 0 200 150" width="100%" height="100%">
+        <defs><linearGradient id="hg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d5e1ec"/><stop offset="1" stop-color="#b9cad9"/></linearGradient></defs>
+        <rect x="70" y="14" width="60" height="112" rx="10" fill="#1d2130"/><rect x="74" y="24" width="52" height="88" rx="4" fill="url(#hg)"/>
+        <circle cx="100" cy="48" r="9" fill="#f4d9c6"/><path d="M100 39c-8 0-11 6-10 13l2-6c3-4 13-4 16 0l2 6c1-7-2-13-10-13z" fill="#1d2130"/>
+        <path d="M86 92c0-14 6-22 14-22s14 8 14 22z" fill="#2f3343"/>
+        <path d="M88 74l-8-8m0 0l-3 2m3-2l2-4" stroke="#f4d9c6" stroke-width="4" stroke-linecap="round" fill="none"/><path d="M112 74l8-10m0 0l3 1m-3-1l-1-4" stroke="#f4d9c6" stroke-width="4" stroke-linecap="round" fill="none"/>
+        <circle cx="100" cy="19" r="2" fill="#6b7287"/><rect x="90" y="128" width="20" height="6" rx="2" fill="#C49356"/><path d="M78 134h44" stroke="#C49356" stroke-width="4" stroke-linecap="round"/>
+        <path d="M40 60q-8 12 0 24M30 54q-14 18 0 36" stroke="#C49356" stroke-width="4" fill="none" stroke-linecap="round"/>
+        <path d="M160 60q8 12 0 24M170 54q14 18 0 36" stroke="#C49356" stroke-width="4" fill="none" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="hero-body">
+      <h2>和聾人面對面聊天</h2>
+      <ol class="steps">
+        <li><b>1</b><span>手機<strong>立起來</strong>，螢幕和前鏡頭對著聾人</span></li>
+        <li><b>2</b><span>聽人在旁邊正常說話，<strong>主播比手語</strong>給他看</span></li>
+        <li><b>3</b><span>聾人對著鏡頭比手語，手機<strong>唸出中文</strong></span></li>
+      </ol>
+      <button class="big" id="btnStart">▶ 開始對話</button>
+      <div class="hero-sub">第一次會詢問麥克風和相機權限・全螢幕、螢幕不休眠<br><a href="#" id="btnF2F">只打開畫面，等一下再開始</a></div>
+    </div>
   </div>
+  <h3 class="sect">分開操作・測試 <span class="muted">打字讓主播比、單獨開麥克風或鏡頭</span></h3>
   <div class="talk">
     <div class="card" id="pAvatar">
-      <h2>🗣️ 聽人說話 → 手語人像</h2>
+      <h2>🗣️ 說話 → 手語主播</h2>
       <div class="stage"><canvas id="avatar"></canvas></div>
       <div class="caption" id="speechText"><span class="muted">按「開始聆聽」，說話就會即時轉成手語</span></div>
       <div class="chips" id="speechChips"></div>
@@ -161,7 +212,7 @@ body.f2f-on{overflow:hidden}
       <div class="status" id="avatarStatus"></div>
     </div>
     <div class="card">
-      <h2>🤟 手語 → 台灣中文語音</h2>
+      <h2>🤟 手語 → 中文語音</h2>
       <div class="stage"><video id="camVideo" class="mirror" playsinline muted></video><canvas id="camOverlay" class="mirror"></canvas>
         <div class="hint" id="camHint">按「開啟鏡頭」，對著鏡頭比手語</div></div>
       <div class="chips" id="signChips"></div>
@@ -194,14 +245,15 @@ body.f2f-on{overflow:hidden}
       <select id="corpusCat"><option value="">全部分類</option><option value="general">一般生活用語</option><option value="church">召會生活用語</option></select>
       <input type="search" id="corpusSearch" class="grow" placeholder="搜尋詞彙">
     </div>
-    <div class="wordlist" id="wordList"></div>
-  </div>
-  <div class="grid2">
-    <div class="card">
+    <div class="preview" id="previewBox" hidden>
       <h2 id="wordTitle">選一個詞預覽</h2>
       <div class="stage" style="aspect-ratio:1/1;max-width:420px"><canvas id="previewCanvas"></canvas></div>
       <div class="samples" id="sampleList"></div>
     </div>
+    <div class="wordlist" id="wordList"></div>
+    <div class="row" style="justify-content:center"><button id="btnMoreWords" hidden>顯示更多</button></div>
+  </div>
+  <div class="grid2">
     <div class="card">
       <h2>📦 匯出、匯入、分享</h2>
       <p class="muted">「本機」語料只存在這台裝置。要讓大家都能用，請「上傳到共用語料庫」：會下載一個語料檔，並開啟 GitHub 頁面，把檔案拖進去送出，系統會自動加進共用語料庫。</p>
@@ -283,16 +335,17 @@ body.f2f-on{overflow:hidden}
   <div class="grid2">
     <div class="card">
       <h2>⚙️ 設定</h2>
-      <label>辨識嚴格度（越小越嚴格）：<b id="thVal"></b><input type="range" id="threshold" min="0.4" max="3" step="0.05"></label>
-      <div class="row"><label class="grow">手語人像：<select id="avatarKind" style="width:100%">
+      <div class="row"><label class="grow">手語主播：<select id="avatarKind" style="width:100%">
         <option value="vrm-f1">插畫風主播：女</option>
         <option value="vrm-m3">插畫風主播：男</option>
         <option value="2d">簡筆人像（最省電）</option>
         <option value="custom">3D 人像：自訂 .glb／.vrm 網址</option>
       </select></label></div>
       <input type="url" id="avatarUrl" placeholder="https://…/avatar.glb" hidden>
-      <div class="row"><label class="grow">同一個詞有兩種分類時，優先用：<select id="prefCat" style="width:100%">
-        <option value="church">召會生活用語</option><option value="general">一般生活用語</option></select></label></div>
+      <label>主播比手語的速度：<b id="spVal"></b><input type="range" id="avatarSpeed" min="0.5" max="1.6" step="0.05"></label>
+      <div class="row"><label class="grow">中文語音：<select id="voice" style="width:100%"></select></label></div>
+      <label>語速：<b id="rtVal"></b><input type="range" id="rate" min="0.6" max="1.5" step="0.05"></label>
+      <details class="adv"><summary>進階設定</summary>
       <div class="row"><label class="grow">語音辨識（聽人說話 → 文字）：<select id="sttEngine" style="width:100%">
         <option value="cloud">雲端 Whisper（穩、台灣口音和召會用語較準，每句晚 1～3 秒）</option>
         <option value="browser">瀏覽器內建（即時，但容易斷、LINE 裡不能用）</option></select></label></div>
@@ -300,22 +353,25 @@ body.f2f-on{overflow:hidden}
         <option value="ai">AI 調整成台灣手語語序（離線或太慢時用規則）</option>
         <option value="rule">規則調整（時間詞放前、否定／疑問放後，不用網路）</option>
         <option value="word">照中文逐詞比</option></select></label></div>
-      <label>手語人像速度：<b id="spVal"></b><input type="range" id="avatarSpeed" min="0.5" max="1.6" step="0.05"></label>
-      <div class="row"><label class="grow">中文語音：<select id="voice" style="width:100%"></select></label></div>
-      <label>語速：<b id="rtVal"></b><input type="range" id="rate" min="0.6" max="1.5" step="0.05"></label>
+      <div class="row"><label class="grow">同一個詞有兩種分類時，優先用：<select id="prefCat" style="width:100%">
+        <option value="church">召會生活用語</option><option value="general">一般生活用語</option></select></label></div>
+      <label>手語辨識嚴格度（越小越嚴格，認錯太多就調小）：<b id="thVal"></b><input type="range" id="threshold" min="0.4" max="3" step="0.05"></label>
       <h2 style="margin-top:14px">同義說法</h2>
       <p class="muted">口語說法對應到語料庫的手語詞，一行一個，例如 <code>您好=你好</code>、<code>多謝=謝謝</code>。</p>
       <textarea id="aliases"></textarea>
+      </details>
       <div class="row"><button class="primary" id="saveSettings">儲存設定</button></div>
     </div>
     <div class="card">
       <h2>📖 使用說明</h2>
       <ol>
-        <li><b>先建語料</b>：到「新增語料」錄詞、上傳影片或貼 YouTube 網址。語料庫裡有的詞，才比得出來、認得出來。</li>
-        <li><b>聽人 → 聾人</b>：「對話」左邊按 🎤，正常說話；人像會即時比出認得的詞，其他字以文字顯示。</li>
-        <li><b>聾人 → 聽人</b>：右邊按 📷，對著鏡頭比；每比完一個詞（手放下或停住）就辨識，停下來後用台灣口音中文唸出整句。</li>
-        <li>認錯的詞（紅色）可以點一下改成正確的詞。</li>
+        <li><b>開始對話</b>：在「對話」按「▶ 開始對話」，把手機立起來（可靠在杯子或手機架上），螢幕和前鏡頭對著聾人。</li>
+        <li><b>聽人說話</b>：在手機旁邊正常說話，講完一句稍停一下；字幕出現在下方，主播把它比成台灣手語。左上角「🎤 聽到聲音」亮起，表示手機有收到。</li>
+        <li><b>聾人比手語</b>：對著鏡頭比，左上角「📷 看到手」亮起表示有拍到；比完的詞會用中文唸出來，停下來後整句換成通順中文。</li>
+        <li><b>會議一直講</b>：主播會照順序一句一句比；按 ⏸ 暫停、⏭ 跳下一句。字太小可按「Aa」放大。</li>
+        <li>認錯的手語詞（紅色）可以在「分開操作」裡點一下改成正確的詞。</li>
       </ol>
+      <p class="muted">語料庫已有中正大學台灣手語線上辭典約 3,500 個詞，還可以自己錄、上傳影片或貼 YouTube 網址增加（「新增語料」）。</p>
       <p class="muted">以<b>台灣手語（自然手語）</b>為主。手語的詞序和中文不同，會先用 AI 調整成台灣手語語序再比（設定裡可改）。</p>
       <p class="muted">隱私：所有影片只在裝置上（或雲端分析時暫存）轉成骨架點，原始影像不保存。</p>
       <p class="muted">建議用 Chrome（Android／電腦）。iPhone 請用 Safari，並「加入主畫面」。</p>
@@ -327,15 +383,19 @@ body.f2f-on{overflow:hidden}
 <footer class="verfoot" id="verFoot"></footer>
 <!-- 面對面模式（全螢幕） -->
 <div id="f2f" hidden>
-  <div class="f2f-hear" id="f2fHear"></div>
   <div class="f2f-stage" id="f2fStage"></div>
+  <div class="f2f-lights"><span id="f2fMic" class="light">🎤 麥克風關</span><span id="f2fEye" class="light">📷 鏡頭關</span></div>
   <div class="f2f-pip off" id="f2fPip"></div>
-  <div class="f2f-sign empty" id="f2fSign"></div>
+  <div class="f2f-caps">
+    <div class="f2f-hear" id="f2fHear"></div>
+    <div class="f2f-sign empty" id="f2fSign"></div>
+  </div>
   <div class="f2f-status" id="f2fStatus" hidden></div>
   <div class="f2f-bar">
     <button class="primary" id="f2fGo">▶ 開始</button>
     <button id="f2fPause" title="暫停／繼續主播">⏸</button>
     <button id="f2fNext" title="下一句">⏭</button>
+    <button id="f2fSize" title="字幕大小">Aa</button>
     <button id="f2fExit" title="離開面對面模式">✕</button>
   </div>
   <div class="f2f-ver" id="f2fVer"></div>

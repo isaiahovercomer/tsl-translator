@@ -7,14 +7,14 @@ import { toGloss, aiGloss, mapGloss, aiFluent } from './gloss.js';
 import { CloudSTT } from './stt.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.9.0';
+const VERSION = '0.10.0';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, ms = 2600) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), ms); }
 
 // ---------- 設定 ----------
-const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝', avatarKind: 'vrm-f1', avatarUrl: '', prefCat: 'church', addCat: 'general', glossMode: 'ai', playMode: 'queue', speakMode: 'word', sttEngine: 'cloud' };
+const DEF = { threshold: 1.4, avatarSpeed: 1, voice: '', rate: 1, aliases: '您好=你好\n多謝=謝謝\n感謝=謝謝', avatarKind: 'vrm-f1', avatarUrl: '', prefCat: 'church', addCat: 'general', glossMode: 'ai', playMode: 'queue', speakMode: 'word', sttEngine: 'cloud', f2fSize: 1 };
 let S = { ...DEF };
 try { S = { ...DEF, ...JSON.parse(localStorage.getItem('tsl-settings') || '{}') }; } catch {}
 // v0.5：預設改成 2D 插畫人像（之前選 3D 寫實的，換成同性別的 2D）
@@ -208,6 +208,10 @@ document.addEventListener('keydown', e => {
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let sr = null, cstt = null, listening = false, pausedForTTS = false;
 const hasApi = !/github\.io$/.test(location.hostname);   // GitHub Pages 備用站沒有 /api
+// 面對面模式左上角的狀態燈（讓聾人知道手機有沒有聽到、有沒有看到）
+const LIGHT = { mic: { off: '🎤 麥克風關', on: '🎤 聆聽中', hot: '🎤 聽到聲音', busy: '⏳ 辨識中' }, eye: { off: '📷 鏡頭關', on: '📷 請比手語', seen: '📷 看到人', hot: '📷 看到手', warn: '📷 請入鏡' } };
+function setLight(id, kind, st) { const el = $(id); if (!el || el.dataset.st === st) return; el.dataset.st = st; el.textContent = LIGHT[kind][st]; el.className = 'light' + (st === 'off' ? '' : ' ' + st); }
+const micLight = st => setLight('f2fMic', 'mic', st);
 // 上一句留在畫面上（聾人要看得到），狀態（聽到聲音／辨識中）用小字接在後面
 let lastHeard = '';
 const showHeard = t => { lastHeard = t; $('speechText').textContent = t; $('f2fHear').textContent = t; };
@@ -219,8 +223,9 @@ async function startCloud() {
   cstt = new CloudSTT({
     onText: t => { showHeard(t); enqueue(t); (window.__heard ||= []).push([Math.round(performance.now()), t]); },
     onState: (st, n) => {
-      if (st === 'speech') showInterim('🎙️ 聽到聲音…');
-      else if (st === 'recognizing' || (st === 'listening' && n > 0)) showInterim('⏳ 辨識中…');
+      if (st === 'speech') { showInterim('🎙️ 聽到聲音…'); micLight('hot'); }
+      else if (st === 'recognizing' || (st === 'listening' && n > 0)) { showInterim('⏳ 辨識中…'); micLight('busy'); }
+      else if (st === 'listening') micLight('on');
     },
     onError: e => {
       if (e.status === 404 || e.status === 405 || e.status === 503) {   // 這個網址沒有雲端辨識 → 改用內建
@@ -249,7 +254,7 @@ function startBrowser() {
       if (r.isFinal) { const t = r[0].transcript.trim(); if (t) { lastHeard = ''; showHeard(t); enqueue(t); } }
       else interim += r[0].transcript;
     }
-    if (interim) { lastHeard = ''; showInterim(interim + '…'); }
+    if (interim) { lastHeard = ''; showInterim(interim + '…'); micLight('hot'); } else micLight('on');
   };
   sr.onerror = e => { if (e.error === 'not-allowed') { toast('請允許使用麥克風'); listening = false; updateListenBtn(); } };
   sr.onend = () => { if (listening && !pausedForTTS) try { sr.start(); } catch {} };
@@ -355,7 +360,7 @@ async function startCam(size) {
   cam = new Camera($('camVideo'), (f, r) => {
     sizeTo($('camOverlay'), $('camVideo')); drawOverlay(ov, r, false);
     if (f) seg.push(f);
-    f2fSeen(!!f);
+    f2fSeen(!!f, !!(r && ((r.leftHandLandmarks && r.leftHandLandmarks.length) || (r.rightHandLandmarks && r.rightHandLandmarks.length))));
   });
   let ok = false;
   try { await cam.start('user', size); ok = true; $('camHint').hidden = true; $('btnCam').textContent = '⏹ 關閉鏡頭'; $('camStatus').textContent = '準備好了，請比手語'; f2fStatus(''); }
@@ -374,16 +379,26 @@ async function lockWake() {
 document.addEventListener('visibilitychange', () => { if (f2fOn && document.visibilityState === 'visible' && !wakeLock) lockWake(); });
 function f2fStatus(t) { $('f2fStatus').textContent = t; $('f2fStatus').hidden = !t; }
 let seenT = 0;
-function f2fSeen(yes) {   // 小視窗外框：綠＝有拍到人，紅＝沒入鏡
+function f2fSeen(yes, hands) {   // 小視窗外框：綠＝有拍到人，紅＝沒入鏡
   if (!f2fOn) return; const now = performance.now(); if (now - seenT < 300) return; seenT = now;
   $('f2fPip').classList.toggle('seen', yes); $('f2fPip').classList.toggle('lost', !yes);
+  if (yes) { lostSince = 0; setLight('f2fEye', 'eye', hands ? 'hot' : 'seen'); }
+  else { if (!lostSince) lostSince = now; setLight('f2fEye', 'eye', now - lostSince > 4000 ? 'warn' : 'on'); }   // 沒拍到人超過 4 秒才提醒入鏡
 }
+let lostSince = 0;
 function f2fUpdate() {
   const on = listening || camOn();
   $('f2fGo').textContent = on ? '⏹ 停止' : '▶ 開始'; $('f2fGo').classList.toggle('rec', on); $('f2fGo').classList.toggle('primary', !on);
   $('f2fPip').classList.toggle('off', !camOn());
   $('f2fPause').textContent = paused() ? '▶' : '⏸';
+  if (!listening) micLight('off'); else if ($('f2fMic').dataset.st === 'off' || !$('f2fMic').dataset.st) micLight('on');
+  if (!camOn()) setLight('f2fEye', 'eye', 'off');
 }
+// 字幕放在按鈕列上面：量按鈕列高度
+function f2fLayout() { if (!f2fOn) return; $('f2f').style.setProperty('--barh', ($('f2f').querySelector('.f2f-bar').offsetHeight + $('f2fVer').offsetHeight) + 'px'); }
+addEventListener('resize', () => setTimeout(f2fLayout, 50));
+const SIZES = [1, 1.25, 1.5];
+function f2fSize(next) { if (next) { S.f2fSize = SIZES[(SIZES.indexOf(S.f2fSize) + 1) % SIZES.length] || 1; saveS(); } $('f2f').style.setProperty('--fs', S.f2fSize || 1); }
 function enterF2F() {
   if (f2fOn) return; f2fOn = true;
   const avStage = $('avatar').parentElement, camStage = $('camVideo').parentElement;
@@ -393,7 +408,7 @@ function enterF2F() {
   const el = $('f2f');
   if (el.requestFullscreen) el.requestFullscreen({ navigationUI: 'hide' }).then(() => screen.orientation?.lock?.('portrait')).catch(() => {});
   else if (el.webkitRequestFullscreen) try { el.webkitRequestFullscreen(); } catch {}
-  lockWake(); f2fUpdate(); renderLog();
+  lockWake(); f2fSize(); f2fUpdate(); renderLog(); requestAnimationFrame(f2fLayout);
   if (!$('f2fHear').textContent) $('f2fHear').innerHTML = '<span class="interim">按「▶ 開始」：手機會一面聽人說話、一面看你比手語</span>';
   if (location.hash !== '#f2f') history.pushState({ f2f: 1 }, '', '#f2f');
 }
@@ -412,7 +427,10 @@ async function f2fToggle() {
   await startCam({ width: 640, height: 480 });
   f2fUpdate();
 }
-$('btnF2F').onclick = enterF2F;
+$('btnF2F').onclick = e => { e.preventDefault(); enterF2F(); };
+// 首頁大按鈕：打開面對面畫面，同時開麥克風和鏡頭（要在同一次點擊裡，瀏覽器才肯給權限、全螢幕）
+$('btnStart').onclick = () => { enterF2F(); if (!(listening || camOn())) f2fToggle(); };
+$('f2fSize').onclick = () => f2fSize(true);
 $('f2fExit').onclick = () => exitF2F();
 $('f2fGo').onclick = f2fToggle;
 $('f2fPause').onclick = () => { $('btnPause').click(); f2fUpdate(); };
@@ -433,15 +451,23 @@ function renderCorpus() {
   const inCat = w => !cat || byWord.get(w).some(s => catOf(s) === cat);
   const words = [...byWord.keys()].filter(w => (!q || w.includes(q)) && inCat(w)).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
   const isChurch = w => byWord.get(w).some(s => catOf(s) === 'church');
-  $('wordList').innerHTML = words.map(w => `<button class="word ${w === selWord ? 'sel' : ''}" data-w="${esc(w)}"><b>${esc(w)}</b><span class="muted">${isChurch(w) ? '⛪ ' : ''}${byWord.get(w).length} 筆</span></button>`).join('')
+  const more = words.length - wordLimit;
+  $('btnMoreWords').hidden = more <= 0; if (more > 0) $('btnMoreWords').textContent = `顯示更多（還有 ${more} 個詞）`;
+  $('wordList').innerHTML = words.slice(0, wordLimit).map(w => `<button class="word ${w === selWord ? 'sel' : ''}" data-w="${esc(w)}"><b>${esc(w)}</b><span class="muted">${isChurch(w) ? '⛪ ' : ''}${byWord.get(w).length} 筆</span></button>`).join('')
     || '<span class="muted">還沒有語料。到「新增語料」開始建立。</span>';
   renderSamples();
 }
-$('corpusSearch').oninput = renderCorpus;
-$('corpusCat').onchange = renderCorpus;
-$('wordList').onclick = e => { const b = e.target.closest('.word'); if (!b) return; selWord = b.dataset.w; renderCorpus(); playSample(byWord.get(selWord)[0]); };
+let wordLimit = 150;   // 一次只畫 150 個詞（全部 3000 多個在手機上會卡）
+$('corpusSearch').oninput = () => { wordLimit = 150; renderCorpus(); };
+$('corpusCat').onchange = () => { wordLimit = 150; renderCorpus(); };
+$('btnMoreWords').onclick = () => { wordLimit += 300; renderCorpus(); };
+$('wordList').onclick = e => {
+  const b = e.target.closest('.word'); if (!b) return; selWord = b.dataset.w; renderCorpus(); playSample(byWord.get(selWord)[0]);
+  $('previewBox').scrollIntoView({ behavior: 'smooth', block: 'center' });
+};
 function renderSamples() {
   const list = selWord && byWord.get(selWord);
+  $('previewBox').hidden = !list;
   $('wordTitle').innerHTML = list ? `「${esc(selWord)}」 <a class="muted" style="font-size:14px" href="${dictUrl(selWord)}" target="_blank" rel="noopener">📖 對照辭典</a>` : '選一個詞預覽';
   $('sampleList').innerHTML = list ? list.map((s, i) => `<div><span class="tag ${s.shared ? '' : 'local'}">${s.shared ? '共用' : '本機'}</span>
     ${s.shared ? `<span class="tag ${catOf(s)}">${CATS[catOf(s)]}</span>` : `<button class="tag ${catOf(s)}" data-cat="${i}" title="點一下切換分類">${CATS[catOf(s)]}</button>`}
