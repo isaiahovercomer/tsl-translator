@@ -49,12 +49,13 @@ export async function onRequest({ request, env }) {
   if (buf.byteLength > 4 * 1024 * 1024) return json({ error: '錄音太長（最多約 2 分鐘）' }, 413);
   let prev = ''; try { prev = decodeURIComponent(request.headers.get('x-prompt') || '').slice(-60); } catch {}
   const audio = b64(buf);
+  const beam = Math.min(5, Math.max(1, +new URL(request.url).searchParams.get('beam') || 5));   // 評估用：?beam=1 較快
   const models = env.STT_MODEL ? [env.STT_MODEL, ...MODELS] : MODELS;
   let lastErr = '';
   for (const model of models) {
     try {
       const input = model.includes('turbo')
-        ? { audio, language: 'zh', task: 'transcribe', vad_filter: true, initial_prompt: TERMS + (prev ? prev : ''), condition_on_previous_text: false, no_speech_threshold: 0.6, hallucination_silence_threshold: 1 }
+        ? { audio, language: 'zh', task: 'transcribe', vad_filter: true, beam_size: beam, initial_prompt: TERMS + (prev ? prev : ''), condition_on_previous_text: false, no_speech_threshold: 0.6, hallucination_silence_threshold: 1 }
         : { audio: [...new Uint8Array(buf)] };
       const r = await env.AI.run(model, input);
       const raw = r?.text ?? r?.transcription_info?.text ?? (Array.isArray(r?.segments) ? r.segments.map(s => s.text).join('') : '');

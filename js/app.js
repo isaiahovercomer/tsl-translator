@@ -208,11 +208,16 @@ document.addEventListener('keydown', e => {
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let sr = null, cstt = null, listening = false, pausedForTTS = false;
 const hasApi = !/github\.io$/.test(location.hostname);   // GitHub Pages 備用站沒有 /api
-const showHeard = t => { $('speechText').textContent = t; $('f2fHear').textContent = t; };
-const showInterim = h => { $('speechText').innerHTML = `<span class="muted">${esc(h)}</span>`; $('f2fHear').innerHTML = `<span class="interim">${esc(h)}</span>`; };
+// 上一句留在畫面上（聾人要看得到），狀態（聽到聲音／辨識中）用小字接在後面
+let lastHeard = '';
+const showHeard = t => { lastHeard = t; $('speechText').textContent = t; $('f2fHear').textContent = t; };
+const showInterim = h => {
+  const pre = lastHeard ? esc(lastHeard) + ' ' : '';
+  $('speechText').innerHTML = `${pre}<span class="muted">${esc(h)}</span>`; $('f2fHear').innerHTML = `${pre}<span class="interim">${esc(h)}</span>`;
+};
 async function startCloud() {
   cstt = new CloudSTT({
-    onText: t => { showHeard(t); enqueue(t); },
+    onText: t => { showHeard(t); enqueue(t); (window.__heard ||= []).push([Math.round(performance.now()), t]); },
     onState: (st, n) => {
       if (st === 'speech') showInterim('🎙️ 聽到聲音…');
       else if (st === 'recognizing' || (st === 'listening' && n > 0)) showInterim('⏳ 辨識中…');
@@ -241,10 +246,10 @@ function startBrowser() {
     let interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const r = e.results[i];
-      if (r.isFinal) { const t = r[0].transcript.trim(); if (t) { showHeard(t); enqueue(t); } }
+      if (r.isFinal) { const t = r[0].transcript.trim(); if (t) { lastHeard = ''; showHeard(t); enqueue(t); } }
       else interim += r[0].transcript;
     }
-    if (interim) { $('speechText').innerHTML = `<span class="muted">${esc(interim)}…</span>`; $('f2fHear').innerHTML = `<span class="interim">${esc(interim)}…</span>`; }
+    if (interim) { lastHeard = ''; showInterim(interim + '…'); }
   };
   sr.onerror = e => { if (e.error === 'not-allowed') { toast('請允許使用麥克風'); listening = false; updateListenBtn(); } };
   sr.onend = () => { if (listening && !pausedForTTS) try { sr.start(); } catch {} };
