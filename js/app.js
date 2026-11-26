@@ -12,7 +12,7 @@ import { makeSpotter } from './spot-client.js';
 import { CloudSTT } from './stt.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.15.0';
+const VERSION = '0.16.0';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

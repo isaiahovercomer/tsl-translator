@@ -20,7 +20,7 @@
   - 需要有 gloss 標註的整句資料（見下面資料 B）。
 - **匯出**：PyTorch → ONNX → int8 量化（約 2～4 MB）→ 網站用 onnxruntime-web（WASM／WebGPU）跑；每段推論手機約 5～20 ms。放 `models/tsl-recog-<版本>.onnx`＋`labels.json`，網站設定可切回 DTW 比較。
 
-## Colab 筆記本（`colab/tsl_recog_train.ipynb`，下次做）
+## Colab 筆記本（`colab/tsl_recog_train.ipynb`，v0.16.0 已做第一版；程式 `tools/train_recog.py`，結果見 HANDOFF）
 1. 掛 Google 雲端硬碟、clone repo（讀 `corpus/`）。
 2. 讀資料：`corpus/signs/**`（辭典）＋收集到的骨架（雲端硬碟 `tsl-collect/`）＋網站「改正」存下的語料。
 3. 前處理＋資料增強：時間伸縮（0.7～1.4 倍）、左右鏡像（左撇子）、小角度旋轉／縮放／平移、隨機遮掉手指或整隻手（模擬手被切到）、加雜訊。

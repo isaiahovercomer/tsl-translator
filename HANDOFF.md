@@ -1,13 +1,42 @@
-# 交接報告：主恢復台灣手語對話翻譯（2026-11-26 晚上，v0.15.0）
+# 交接報告：主恢復台灣手語對話翻譯（2026-11-26 深夜，v0.16.0）
 
-## 下一步（不用等真人資料就能做；2026-11-26 22:30 跟使用者列的，建議先做 1～3）
-1. 中正辭典 546 句**例句影片抽骨架**（GitHub Actions，ccu_dict.py 擴充）→ 整句 gloss 訓練資料。
-2. **Colab 訓練筆記本第一版**：辭典資料＋大量增強（時間伸縮、鏡像、雜訊、遮手）訓練單詞模型，跟 DTW 比準確率；流程跑通，等真人資料再訓練。
-3. **收集進度頁**：讀 collect 分支，統計每詞幾次／幾人、缺哪些；收集模式自動把最缺的排前面。
-4. 說話→手譯員**缺詞處理**（同義詞 → 拆字 → 畫面直接打字）。
-5. 記下**常缺的詞**自動進收集清單。
-6. 2D 手譯員也用表情係數 `fbs`。
-7. **離線**：情境詞語料預先快取；沒網路時 AI 挑詞改唸第一候選。
+## 下一步
+1. **網站接上模型**：onnxruntime-web 載 `models` 分支的 `tsl-recog.int8.onnx`（輸入就是現在送給 DTW 的 16×86 seqFeat 特徵，`classifyFeat` 旁邊加 `ModelRecognizer`，情境＝把不在情境的詞 logits 設 -∞），設定可切「模型／DTW」，真人實測比較。
+2. **請弟兄姊妹用收集模式錄**（最缺的先錄已做好）→ 有 5 人以上就在 Colab 重跑 `tsl_recog_train.ipynb`（真人資料會依「人」分訓練／測試）。
+3. 例句切詞改用模型重新對齊（訓練→用模型重切→再訓練），標籤會更乾淨。
+4. 說話→手譯員**缺詞處理**（同義詞 → 拆字 → 畫面直接打字）；常缺的詞自動進收集清單。
+5. 2D 手譯員也用表情係數 `fbs`；離線（情境詞語料預先快取、沒網路 AI 挑詞改唸第一候選）。
+
+## v0.16.0：例句抽骨架、辨識模型第一版、收集進度
+### ① 辭典例句影片抽骨架＋自動切詞（`corpus/sent/`）
+- Actions「辭典例句影片抽骨架（中正大學）」（`.github/workflows/ccu-sent.yml`，8 份平行，約 25 分鐘）：`tools/ccu_dict.py sent` 下載例句影片 → MediaPipe 骨架＋52 個表情係數 `fbs` → 刪影片；`sent-merge` 合併；`tools/align_sent.py` 切詞。已跑完：**480 句全部成功**（ccu-meta 546 筆有重複），34 MB，每句中位數 93 格、5 個詞。
+- `corpus/sent/index.json`：`{sents: [{id: 'ccuS9', gloss: ['我','游泳','會'], gv: ['我_B',…]（辭典變體名）, text, frames, q, file, seg: [[開始,結束)…], d: [距離|null…]}]}`；每句檔 `sent/ccu/ccuS<id>.json`（data、fbs、aspect，格式同單詞）。
+- 切詞＝已知詞序的強制對齊：每個 gloss 詞拿辭典示範（變體優先）當樣本，所有片段算 DTW，動態規劃（詞間最多 15 格過渡）。辭典沒有的詞也佔一段（d=null，約 10%）。
+  - 假句子（單詞接起來）測：兩端誤差中位數 3 格。真例句：距離中位數 1.93（例句比得快、連在一起，跟單詞示範差很多）；正確 gloss vs 別句 gloss 對齊距離 1.86 vs 2.02 → **標籤有雜訊**，所以訓練只用 d≤1.2 的片段。
+- `tools/feats.py`：Python 版 frameFeat／seqFeat／dtw，跟 core.js **逐位一致**（`python tools/feats.py check`）。
+
+### ② 辨識模型第一版（`tools/train_recog.py`＋`colab/tsl_recog_train.ipynb`）
+- 輸入＝網頁的 seqFeat（16 格×86 維），網站接模型不用改特徵。模型：線性＋2 個深度卷積區塊＋2 層 Transformer（d=192）→ 詞，2.0M 參數，ONNX int8 約 2.1 MB（onnxruntime 跟 PyTorch 答案 100% 一樣）。
+- 資料增強：頭尾裁切、速度 0.7～1.4、鏡像 25%（左撇子）、整體旋轉縮放平移、每隻手手指旋轉縮放、雜訊、遮手、掉格；特徵再加雜訊。
+- 切分：辭典示範全部訓練；例句**依句子**分（30% 句子當測試，測試放寬到 d≤2.5，免得只測 DTW 本來就認得的）；真人資料**依人**分（每 4 人留 1 人測試）。`_none`（自然動作）有資料才加類別。
+- 評估：同樣訓練資料，DTW（網頁做法：粗篩 60 再 DTW）vs 模型，全部詞彙＋三個情境，top-1／top-3，另列最常認錯的詞。
+- **這裡 CPU 跑 60 epochs（約 15 分鐘）的結果**（測試＝例句切出的詞，連續手語、標籤有雜訊，所以絕對值偏低；切點是用 DTW 找的，對 DTW 有利）：
+
+| 範圍 | 筆數 | DTW top1/top3 | 模型 top1/top3 | 不用例句訓練的模型 |
+|---|---|---|---|---|
+| 全部詞彙（2876） | 414 | 10.4% / 15.9% | **12.8% / 21.0%** | 5.2% / 10.8% |
+| 寒暄常用 | 183 | 18.6% / 30.6% | **26.2% / 38.8%** | 19.6% / 31.0% |
+| 聚會 | 157 | 19.1% / 34.4% | **29.3% / 42.0%** | 20.4% / 33.1% |
+| 召會生活 | 165 | 20.0% / 34.5% | **27.9% / 43.0%** | 18.2% / 35.8% |
+  - 最常認錯的是指示詞（他→那、這→你）：指方向的手勢本來就難。
+  - 模型已放 **`models` 分支 `models/v1-cpu/`**（tsl-recog.int8.onnx、labels.json、report.json）。網站還沒接。
+- 筆記本（`tools/make_train_notebook.py` 產生）：① 掛雲端硬碟、clone、**稀疏下載 collect 分支的 collect/**（不抓 250 MB 舊語料）② 版本名、epochs ③ 訓練＋比較 ④ 報告 ⑤ 用 `GITHUB_TOKEN` 上傳到 `models/<版本>/`。
+
+### ③ 收集進度（`js/collect.js`、`functions/api/collect.js`）
+- 上傳 API 改用 git data API：**同一個 commit** 寫資料檔＋更新 `collect/stats.json`（`{samples, logs, files, signers:{代號:{n,hand,last}}, words:{詞:{n, s:{代號:次數}, k?, c?}}}`）；分支被別人先更新（422）就重讀重試（最多 4 次）。`GET /api/collect?stats=1` 回統計（快取 60 秒；沒 token 時讀 raw.githubusercontent）。初始 stats.json 已放上。重算：`tools/collect_stats.py <collect 資料夾>`。
+- 收集模式設定頁「📊 收集進度」：大家共錄幾次幾人；選的清單每個詞 次數／人數／你錄了幾次＋進度條，最缺的排上面，達標數。目標（GOAL）：單詞 20 次 5 人、句子 5 次 3 人、自然動作 30 段 5 人。這支手機還沒上傳的、統計還沒算到的也算進去。
+- 「最缺的先錄」（預設勾，`SET.smart`）：每次開始依缺的程度排（人數不夠權重 1.5），自己已錄滿的放最後，從第一個開始；詞卡上方顯示「大家已錄 N 次、M 人」。取消勾選＝照原本順序、記得做到第幾個。
+- 測試：`node tools/test_collect_api.mjs`（假 GitHub：同 commit 更新統計、同時上傳衝突重試）、`tools/test_collect.py`（排序、進度表、取消後照順序）、test_worker、test_f2f 都通過。
 
 ## v0.15.0：真人實測的準備——辨識紀錄、改正變訓練資料、比對放背景執行緒、顯示每秒幾格
 1. **辨識紀錄**（設定頁「🛠 幫忙改進辨識」）：每句存一筆 `{kind:'log', log:{scene, mode, th, worker, ms, fps, slots:[{alt:[[詞,距離]×3], keep, n, fixed}], ai:{text,pick}, said}}` 到 IndexedDB collect（`S.recLog` 預設開，只存在手機）。設定頁顯示統計：幾句、幾個手勢、太不像沒送的、**AI 換掉第一候選 %、使用者改正 %、第一候選距離中位數**，可「💾 下載紀錄」。
@@ -213,7 +242,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.15.0
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.16.0；分支 collect（收集資料＋stats.json）、models（辨識模型）、reextract（Colab 重抽）
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。

@@ -16,6 +16,9 @@ const saveSet = () => { try { localStorage.setItem('tsl-collect', JSON.stringify
 
 let ctx = null;   // { samplesFor(word) → 語料（看示範用）, toast }
 let cam = null, demo = null, items = [], idx = 0, take = 0, reps = 3, kind = 'word', cat = 'general';
+// 收集目標（docs/PLAN-colab.md）：單詞每詞 ≥20 次、≥5 人；句子 ≥5 次、≥3 人；自然動作 ≥30 段、≥5 人
+const GOAL = { word: [20, 5], sent: [5, 3], none: [30, 5] };
+let remote = null, smartOrder = false;   // collect/stats.json（大家上傳的統計）
 let state = 'off', buf = [], pre = [], down = 0, up = 0, recStart = 0, noneTimer = null, lastSaved = null;
 
 function itemsFor(key) {
@@ -42,6 +45,9 @@ export function initCollect(c) {
   $('colRedo').onclick = redo;
   $('colDemoBtn').onclick = playDemo;
   $('colUpload').onclick = () => upload(true);
+  $('colSmart').checked = SET.smart !== false;
+  $('colStatsBtn').onclick = toggleStats;
+  $('colList').onchange = () => { if (!$('colStats').hidden) renderStats(); };
   $('colDownload').onclick = async () => { const all = await store.collectAll(); if (!all.length) return ctx.toast('還沒有錄任何資料'); store.download(`手語收集-${SET.signer || ''}-${new Date().toISOString().slice(0, 10)}.json`, { kind: 'tsl-collect', signer: SET.signer, hand: SET.hand, samples: all }); };
   fetch('api/collect').then(r => r.ok ? r.json() : null).then(j => { ctx.ready = !!(j && j.ready); $('colCodeRow').hidden = !(j && j.code); refreshPending(); }).catch(() => refreshPending());
 }
@@ -59,10 +65,14 @@ async function start() {
   const signer = $('colSigner').value.trim();
   if (!signer) { $('colSigner').focus(); return ctx.toast('請填代號（不用真名）'); }
   if (!$('colConsent').checked) return ctx.toast('請先勾選同意');
-  Object.assign(SET, { signer, hand: $('colHand').value, list: $('colList').value, reps: +$('colReps').value, code: $('colCode').value.trim(), consent: true }); saveSet();
-  items = itemsFor(SET.list); reps = SET.reps; idx = SET.pos && SET.pos[SET.list] || 0; take = 0;
-  if (idx >= items.length) idx = 0;
+  Object.assign(SET, { signer, hand: $('colHand').value, list: $('colList').value, reps: +$('colReps').value, code: $('colCode').value.trim(), consent: true, smart: $('colSmart').checked }); saveSet();
+  items = itemsFor(SET.list); reps = SET.reps; take = 0;
   kind = SET.list === 'none' ? 'none' : SET.list.startsWith('s:') ? 'sent' : 'word';
+  if (SET.smart && kind !== 'none') {           // 最缺的先錄：每次開始都重新排（自己錄滿的放最後），從第一個開始
+    await loadStats();
+    items = orderByNeed(items, await counts(), kind); idx = 0; smartOrder = true;
+  } else { idx = SET.pos && SET.pos[SET.list] || 0; smartOrder = false; }
+  if (idx >= items.length) idx = 0;
   cat = /church|missing/.test(SET.list) ? 'church' : 'general';
   $('colSetup').hidden = true; $('colRec').hidden = false;
   if (!demo) { demo = new AvatarPlayer($('colDemo'), {}); demo.style = 'f1'; }
@@ -83,7 +93,8 @@ function stopCam() { if (cam) cam.stop(); cam = null; clearTimeout(noneTimer); s
 function showItem() {
   const it = items[idx];
   if (!it) return finish();
-  $('colProg').textContent = `${LISTS[SET.list]}・第 ${idx + 1}／${items.length} 個`;
+  const c = it.need;
+  $('colProg').textContent = `${LISTS[SET.list]}・第 ${idx + 1}／${items.length} 個` + (smartOrder && c ? `（大家已錄 ${c.n} 次、${c.p} 人）` : '');
   $('colWord').textContent = it.prompt;
   $('colWord').classList.toggle('long', it.prompt.length > 8);
   $('colTake').innerHTML = kind === 'none' ? '照著做 15 秒（自然就好）' : Array.from({ length: reps }, (_, i) => `<span class="${i < take ? 'done' : ''}">${i < take ? '✓' : i + 1}</span>`).join('');
@@ -154,7 +165,7 @@ async function redo() {
 }
 function next(skipped) {
   idx++; take = 0; lastSaved = skipped ? lastSaved : null;
-  SET.pos = { ...(SET.pos || {}), [SET.list]: idx }; saveSet();
+  if (!smartOrder) { SET.pos = { ...(SET.pos || {}), [SET.list]: idx }; saveSet(); }
   if (idx % 10 === 0) upload(false);
   if (idx >= items.length) return finish();
   showItem(); if (kind === 'none') { clearTimeout(noneTimer); setState('wait'); } else setState('wait');
@@ -164,6 +175,71 @@ function finish() {
   upload(false); setTimeout(endSession, 2500);
 }
 async function endSession() { stopCam(); await upload(false); $('colRec').hidden = true; $('colSetup').hidden = false; refreshPending(); }
+
+// ---------- 收集進度（v0.16）----------
+const RAW = 'https://raw.githubusercontent.com/isaiahovercomer/tsl-translator/collect/collect/stats.json';
+export async function loadStats(force) {
+  if (remote && !force) return remote;
+  for (const u of ['api/collect?stats=1', RAW]) {
+    try { const r = await fetch(u, { cache: force ? 'no-store' : 'default' }); if (r.ok) { const j = await r.json(); if (j && j.words) return (remote = j); } } catch {}
+  }
+  return remote;
+}
+// 每個詞：大家上傳的（stats.json）＋這支手機還沒上傳的 → {n 次, p 人, me 我錄了幾次}
+async function counts() {
+  const st = remote || { words: {} }, me = SET.signer, out = {};
+  for (const [w, x] of Object.entries(st.words || {})) out[w] = { n: x.n, ppl: new Set(Object.keys(x.s || {})), me: (x.s || {})[me] || 0 };
+  let local = [];
+  try { local = await store.collectAll(); } catch {}
+  for (const s of local) {
+    if (s.kind === 'log' || !s.word) continue;
+    const who = s.signer || me;
+    const o = out[s.word] || (out[s.word] = { n: 0, ppl: new Set(), me: 0 });
+    // 還沒上傳的、或上傳了但比統計的更新時間晚（統計還沒算到）→ 加進去
+    if (!s.up || !remote || !remote.updated || (s.created || '') > remote.updated) { o.n++; o.ppl.add(who); if (who === me) o.me++; }
+  }
+  for (const o of Object.values(out)) o.p = o.ppl.size;
+  return out;
+}
+// 缺多少：次數不夠的差額＋人數不夠的差額（人數比較重要：換人才學得到不同比法）
+function needScore(c, k) {
+  const [N, Pp] = GOAL[k] || GOAL.word;
+  return Math.max(0, N - c.n) / N + 1.5 * Math.max(0, Pp - c.p) / Pp;
+}
+function orderByNeed(list, cnt, k) {
+  const z = { n: 0, p: 0, me: 0 };
+  return list.map((it, i) => {
+    const c = cnt[it.word] || z;
+    return { ...it, need: { n: c.n, p: c.p, me: c.me }, _done: c.me >= reps ? 1 : 0, _s: needScore(c, k), _i: i };
+  }).sort((a, b) => a._done - b._done || b._s - a._s || a._i - b._i);
+}
+async function toggleStats() {
+  const el = $('colStats');
+  if (!el.hidden) { el.hidden = true; return; }
+  el.hidden = false; el.innerHTML = '讀取中…';
+  const sg = $('colSigner').value.trim(); if (sg) SET.signer = sg;
+  await loadStats(true); renderStats();
+}
+async function renderStats() {
+  const el = $('colStats'), key = $('colList').value;
+  const k = key === 'none' ? 'none' : key.startsWith('s:') ? 'sent' : 'word';
+  const [N, Pp] = GOAL[k], cnt = await counts(), st = remote;
+  const list = itemsFor(key);
+  const uniq = [...new Map(list.map(it => [it.word, it])).values()];
+  const rows = uniq.map(it => ({ it, c: cnt[it.word] || { n: 0, p: 0, me: 0 } })).sort((a, b) => needScore(b.c, k) - needScore(a.c, k));
+  const done = rows.filter(r => r.c.n >= N && r.c.p >= Pp).length;
+  const esc = t => String(t).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+  const ppl = st ? Object.keys(st.signers || {}).filter(x => (st.signers[x].n || 0) > 0).length : 0;
+  const head = st ? `<div class="cs-sum">大家一共錄了 <b>${st.samples}</b> 次、<b>${ppl}</b> 人${st.updated ? `<span class="muted">（更新 ${new Date(st.updated).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}）</span>` : ''}</div>`
+    : '<div class="cs-sum muted">讀不到大家的統計（沒網路？），下面只算這支手機錄的</div>';
+  el.innerHTML = head +
+    `<div class="cs-sum">「${esc(LISTS[key])}」目標每個 ${N} 次、${Pp} 人：達標 <b>${done}</b>／${rows.length}` +
+    (rows.length - done ? `；最缺：${rows.filter(r => !(r.c.n >= N && r.c.p >= Pp)).slice(0, 5).map(r => esc(r.it.prompt)).join('、')}` : ' 🎉') + '</div>' +
+    '<table>' + rows.map(({ it, c }) => {
+      const f = Math.min(1, (Math.min(1, c.n / N) + Math.min(1, c.p / Pp)) / 2), cls = f >= 1 ? 'ok' : f >= 0.5 ? 'mid' : '';
+      return `<tr><td class="w">${esc(it.prompt)}</td><td><div class="bar"><i class="${cls}" style="width:${Math.max(4, f * 100)}%"></i></div></td><td>${c.n} 次</td><td>${c.p} 人</td><td class="me">${c.me ? '你 ' + c.me : ''}</td></tr>`;
+    }).join('') + '</table>';
+}
 
 // 上傳：沒上傳的分批送（每批 ≤ 60 筆、≤ 3 MB）
 let uploading = false;
@@ -190,7 +266,7 @@ export async function upload(loud) {
       for (const s of batch) await store.collectPut({ ...s, up: 1 });
       sent += batch.length;
     }
-    if (sent) ctx.toast(`已上傳 ${sent} 次，謝謝！`);
+    if (sent) { ctx.toast(`已上傳 ${sent} 次，謝謝！`); remote = null; }
   } catch (e) { if (loud) ctx.toast('上傳失敗（網路？）資料還在手機裡'); }
   finally { uploading = false; refreshPending(); }
 }
@@ -230,4 +306,4 @@ export async function recStats() {
 }
 
 // 測試用（tools/test_collect.py）：直接餵影格
-if (typeof window !== 'undefined') window.__collect = { feed: f => onFrame(f), get state() { return state; }, get idx() { return idx; }, get take() { return take; }, upload };
+if (typeof window !== 'undefined') window.__collect = { feed: f => onFrame(f), get state() { return state; }, get idx() { return idx; }, get take() { return take; }, get items() { return items; }, upload, loadStats };

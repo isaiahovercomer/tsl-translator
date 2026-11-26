@@ -88,6 +88,14 @@ textarea{width:100%;min-height:80px}
 .col-demo{flex:1;display:flex;flex-direction:column;gap:6px;align-items:stretch;min-width:0}
 .col-demo canvas{width:100%;aspect-ratio:3/4;background:#eef1f7;border-radius:10px}
 .col-state{position:absolute;left:8px;right:8px;bottom:8px;text-align:center;font-size:17px;font-weight:700;padding:8px;border-radius:10px;background:rgba(20,28,48,.75)}
+.col-stats{background:#262b3d;border-radius:12px;padding:10px;font-size:14px;display:flex;flex-direction:column;gap:6px}
+.col-stats .cs-sum b{color:#ffd27a;font-size:16px}
+.col-stats table{width:100%;border-collapse:collapse}
+.col-stats td{padding:3px 4px;border-top:1px solid #343a52;white-space:nowrap}
+.col-stats td.w{white-space:normal;max-width:9em}
+.col-stats .bar{height:8px;border-radius:4px;background:#3a4058;overflow:hidden;min-width:60px}
+.col-stats .bar i{display:block;height:100%;background:#c0392b}.col-stats .bar i.mid{background:#d9a441}.col-stats .bar i.ok{background:#3fbf7f}
+.col-stats .me{color:#9fd8b8}
 .col-state.ready{background:#2f7d55}.col-state.rec,.col-state.none{background:#c0392b}.col-state.ok{background:#2f7d55}.col-state.short,.col-state.err{background:#b8860b}
 @media (orientation:portrait){.col-main{flex-direction:column}.col-demo{flex-direction:row;align-items:center}.col-demo canvas{width:30vw;flex:none}}
 .sentence{font-size:22px;font-weight:600;min-height:1.6em;margin-top:6px}
@@ -479,13 +487,15 @@ body.f2f-on{overflow:hidden}
     <label>代號（不用真名）<input id="colSigner" placeholder="例如：七會所-小明" maxlength="20"></label>
     <label>慣用手 <select id="colHand"><option value="right">右手</option><option value="left">左手</option></select></label>
     <label>要錄的清單 <select id="colList"></select></label>
+    <label class="consent"><input type="checkbox" id="colSmart" checked> 最缺的先錄（大家錄得少、你還沒錄過的詞排前面）</label>
     <label>每個詞比幾次 <select id="colReps"><option>2</option><option selected>3</option><option>5</option></select></label>
     <label id="colCodeRow" hidden>收集碼（負責的弟兄姊妹給的）<input id="colCode"></label>
     <label class="consent"><input type="checkbox" id="colConsent"> 我同意把錄下的骨架點（不含影像）用來訓練台灣手語翻譯模型，並公開在 GitHub 的語料庫。</label>
     <p class="muted">小提醒：手機直立放好、上半身和雙手都要入鏡；<b>手放下＝準備，舉手＝開始錄，比完手放下＝錄好</b>。比錯了按「↺ 重錄」。</p>
     <div class="row"><button class="primary" id="colStart">▶ 開始錄</button><button id="colClose">✕ 關閉</button></div>
     <p class="muted" id="colPending"></p>
-    <div class="row"><button id="colUpload" hidden>⬆ 上傳</button><button id="colDownload">💾 下載備份</button></div>
+    <div class="row"><button id="colUpload" hidden>⬆ 上傳</button><button id="colDownload">💾 下載備份</button><button id="colStatsBtn">📊 收集進度</button></div>
+    <div class="col-stats" id="colStats" hidden></div>
   </div>
   <div class="col-rec" id="colRec" hidden>
     <div class="col-card"><div class="col-prog" id="colProg"></div><div class="col-word" id="colWord"></div><div class="col-take" id="colTake"></div></div>
