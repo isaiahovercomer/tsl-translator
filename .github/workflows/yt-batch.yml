@@ -17,8 +17,8 @@ on:
         description: 這次最多幾支
         default: '12'
       shards:
-        description: 分幾份同時跑（最多 20）
-        default: '6'
+        description: 分幾份同時跑（YouTube 容易擋，建議 1～2）
+        default: '2'
       category:
         description: 分類（church＝召會生活用語、general＝一般生活用語）
         default: church

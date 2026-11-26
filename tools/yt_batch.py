@@ -22,7 +22,8 @@ MAX_SECONDS = 90 * 60
 
 def ydl_opts(tmp, **kw):
     # remote_components：讓 yt-dlp 用 deno 解 YouTube 的 JS 驗證（沒有的話只抓得到縮圖）
-    o = {'quiet': True, 'noprogress': True, 'ignoreerrors': False, 'remote_components': {'ejs:github'}}
+    o = {'quiet': True, 'noprogress': True, 'ignoreerrors': False, 'remote_components': {'ejs:github'},
+         'sleep_interval': 8, 'max_sleep_interval': 20, 'sleep_interval_requests': 1}   # 慢一點，比較不會被當成機器人
     if os.environ.get('YT_COOKIES'):
         ck = Path(tmp) / 'cookies.txt'
         ck.write_text(os.environ['YT_COOKIES'], 'utf-8')
