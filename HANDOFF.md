@@ -1,4 +1,4 @@
-# 交接報告：主恢復台灣手語對話翻譯（2026-11-27，v0.20.0）
+# 交接報告：主恢復台灣手語對話翻譯（2026-11-27，v0.20.1）
 
 ## 下一步（下一個對話各開一個）
 1. **召會語料（接續）**：YouTube 仍擋雲端（GitHub Actions 的 YT_COOKIES 又被「Sign in to confirm you're not a bot」擋；box 點數 -3）。改用**使用者 Windows 電腦下載**：
@@ -8,6 +8,12 @@
 2. **對話紀錄匯出**：面對面模式的聽到的話＋手語逐字稿（`logLines`，每句有 `slots`／`words`／`t`）匯出成文字檔或分享。
 3. **iPhone 實機測試**（見 v0.19 的重點）。
 4. 之前留下的（見下面 v0.19 以前）：真人實測「模型 vs DTW」、收集模式找人錄、Colab 重抽 merge、例句切詞改用模型重新對齊。
+
+## v0.20.1：手機面對面模式「只看到聽到聲音…，一直沒有字、手譯員不比」
+- 重現（Playwright 假麥克風＋真的 /api/stt）：①面對面模式主執行緒很忙（鏡頭辨識＋3D 手譯員），舊的 ScriptProcessor 在主執行緒收音會掉聲音 → Whisper 回「兇兇兇妹妹我們我們…」或空白；②手語轉語音 say() 在手機唸不出來時 onend／onerror 都不來 → 麥克風永遠暫停，畫面停在「聽到聲音…」。
+- 修正：`js/stt.js` 改用 AudioWorklet 收音（聲音執行緒，不掉；不支援才退回 ScriptProcessor）；每句辨識最多等 15 秒（逾時不卡後面）；連續 3 句聽不出字 → 顯示「聽不清楚，請靠近手機、說慢一點」。`say()` 加保險：估計唸完時間＋3 秒還沒恢復就強制恢復聆聽；唸的時候燈號顯示「🔈 唸出來時暫停聽」。
+- 排隊時手譯員自動加快（後面每多 1 句 +20%，最多 1.6 倍）：比一句常要 10 秒以上、說一句只要 3 秒。
+- 還沒在真手機驗證（請使用者再試）。
 
 ## v0.20.0：召會語料——江啟禎弟兄影片自動切詞＋字幕對齊＋人工確認
 ### ① 自動切詞 `tools/church_align.py`
@@ -27,7 +33,7 @@
 ### ④ Actions「召會語料」`.github/workflows/church-corpus.yml`
 - 每天 03:37（台灣）：抓 collect 分支 → `church_align.py accept` → `build_feats.mjs` → commit。手動執行可勾「重新切詞」（`cut=true`，可指定詞）。
 ### 其他
-- 版本 0.20.0（app.js、sw `tsl-v0.20.0`，SHELL 加 js/churchreview.js）。
+- 版本 0.20.1（app.js、sw `tsl-v0.20.0`，SHELL 加 js/churchreview.js）。
 - 測試：`python3 tools/test_church.py`（假影片 3 支插「弟兄」→ 自動切詞前 5 名全對 → 確認頁：播放、調切點、原影片嵌入、✅×3 ❌×1、本機語料、說話不再字卡、送出、下載 → accept 收進 3 段、改 ❌ 拿掉 1 段；截圖 /home/claude/shots/v020_*.png）、`node tools/test_collect_api.mjs`、test_v019、test_collect、test_missing 都通過。
 - 試跑 Actions 批次匯入（2026-11-27 04:00）3 支全被擋，所以改成使用者電腦下載。
 
@@ -334,7 +340,7 @@
 ## 網址與 repo
 - 網站：https://tslinterpreter.pages.dev/（Cloudflare Pages，已接 GitHub，push 後約 30 秒自動更新）
 - 備用：https://isaiahovercomer.github.io/tsl-translator/
-- Repo：isaiahovercomer/tsl-translator（main），版本 0.20.0；分支 collect（收集資料＋stats.json）、models（辨識模型）、reextract（Colab 重抽）
+- Repo：isaiahovercomer/tsl-translator（main），版本 0.20.1；分支 collect（收集資料＋stats.json）、models（辨識模型）、reextract（Colab 重抽）
 
 ## 這次完成
 1. **3D 寫實人像**（`js/avatar3d.js`）：three.js 0.170（CDN importmap），82 點骨架 → Mixamo／Biped 骨頭（手臂、手掌三點定方向、手指、頭、13 個 ARKit 表情）。

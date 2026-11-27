@@ -14,7 +14,7 @@ import { prefetch, markOffline, offlineInfo, onWifi } from './offline.js';
 import { CloudSTT } from './stt.js';
 import { RealPlayer } from './realplayer.js';
 
-const VERSION = '0.20.0';
+const VERSION = '0.20.1';
 const $ = id => document.getElementById(id);
 const dictUrl = w => 'https://twtsl.ccu.edu.tw/search/manual?keyword=' + encodeURIComponent(w);   // 中正大學台灣手語線上辭典
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -193,7 +193,12 @@ async function pump() {
     }
   } finally { pumping = false; renderQueue(); }
 }
-function startEntry(r) { lastEntry = r; showEntry(r); $('nowText').textContent = r.text; if (realOn) real.play(r.items); else player.play(r.items, false); renderQueue(); }
+// v0.20.1：比一句常要 10 秒以上，說一句只要 3 秒 → 後面還有句子在排時自動比快一點（最多 1.6 倍），比較跟得上
+function startEntry(r) {
+  lastEntry = r; showEntry(r); $('nowText').textContent = r.text;
+  player.speed = real.speed = S.avatarSpeed * Math.min(1.6, 1 + 0.2 * Q.length);
+  if (realOn) real.play(r.items); else player.play(r.items, false); renderQueue();
+}
 function renderQueue() {
   const n = Q.length;
   $('queueInfo').textContent = n ? `還有 ${n} 句：${Q[0].text.slice(0, 16)}${Q[0].text.length > 16 ? '…' : ''}` : (S.playMode === 'step' && !busy() ? '等下一句' : '');
@@ -236,7 +241,7 @@ const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let sr = null, cstt = null, listening = false, pausedForTTS = false;
 const hasApi = !/github\.io$/.test(location.hostname);   // GitHub Pages 備用站沒有 /api
 // 面對面模式左上角的狀態燈（讓聽損者知道手機有沒有聽到、有沒有看到）
-const LIGHT = { mic: { off: '🎤 麥克風關', on: '🎤 聆聽中', hot: '🎤 聽到聲音', busy: '⏳ 辨識中' }, eye: { off: '📷 鏡頭關', on: '📷 請比手語', seen: '📷 看到人', hot: '📷 看到手', warn: '📷 請入鏡' } };
+const LIGHT = { mic: { off: '🎤 麥克風關', on: '🎤 聆聽中', hot: '🎤 聽到聲音', busy: '⏳ 辨識中', tts: '🔈 唸出來時暫停聽' }, eye: { off: '📷 鏡頭關', on: '📷 請比手語', seen: '📷 看到人', hot: '📷 看到手', warn: '📷 請入鏡' } };
 function setLight(id, kind, st) { const el = $(id); if (!el || el.dataset.st === st) return; el.dataset.st = st; el.textContent = LIGHT[kind][st]; el.className = 'light' + (st === 'off' ? '' : ' ' + st); }
 const micLight = st => setLight('f2fMic', 'mic', st);
 // 上一句留在畫面上（聽損者要看得到），狀態（聽到聲音／辨識中）用小字接在後面
@@ -250,10 +255,13 @@ async function startCloud() {
   cstt = new CloudSTT({
     onText: t => { showHeard(t); enqueue(t); (window.__heard ||= []).push([Math.round(performance.now()), t]); },
     onState: (st, n) => {
+      if (pausedForTTS) return;   // 唸出來時燈號維持「暫停聽」
       if (st === 'speech') { showInterim('🎙️ 聽到聲音…'); micLight('hot'); }
       else if (st === 'recognizing' || (st === 'listening' && n > 0)) { showInterim('⏳ 辨識中…'); micLight('busy'); }
       else if (st === 'listening') micLight('on');
     },
+    onEmpty: n => { if (n >= 3 && !lastHeard) showInterim('🎤 聽不清楚，請靠近手機、說慢一點'); else if (n >= 3) showInterim('（沒聽清楚）'); },
+    onTimeout: () => toast('網路比較慢，有一句語音辨識逾時'),
     onError: e => {
       if (e.status === 404 || e.status === 405 || e.status === 503) {   // 這個網址沒有雲端辨識 → 改用內建
         toast('雲端語音辨識無法使用，改用瀏覽器內建'); if (cstt) cstt.stop(); cstt = null;
@@ -447,14 +455,20 @@ function say(text, interrupt = false) {
   if (interrupt) speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text); u.lang = 'zh-TW'; u.rate = S.rate;
   const v = speechSynthesis.getVoices().find(v => v.voiceURI === S.voice) || pickVoice(); if (v) u.voice = v;
-  if (listening && !pausedForTTS) { pausedForTTS = true; pauseRec(); }
+  if (listening && !pausedForTTS) { pausedForTTS = true; pauseRec(); micLight('tts'); }
   u.onend = u.onerror = () => {
     setTimeout(() => {   // 全部唸完才恢復聆聽
-      if (pausedForTTS && !speechSynthesis.speaking && !speechSynthesis.pending) { pausedForTTS = false; if (listening) resumeRec(); }
+      if (pausedForTTS && !speechSynthesis.speaking && !speechSynthesis.pending) resumeAfterTTS();
     }, 150);
   };
+  // v0.20.1 保險：有些手機唸不出來時 onend／onerror 都不會來（沒有中文語音、沒有使用者按過、背景被系統擋），
+  // 以前麥克風就一直暫停 → 畫面停在「聽到聲音…」、手譯員永遠等不到話。估計唸完的時間＋3 秒，還沒恢復就強制恢復。
+  const ms = 3000 + [...text].length * 350 / (S.rate || 1);
+  clearTimeout(ttsGuard); ttsGuard = setTimeout(() => { if (pausedForTTS) { try { speechSynthesis.cancel(); } catch {} resumeAfterTTS(); } }, ms);
   speechSynthesis.speak(u);
 }
+let ttsGuard = 0;
+function resumeAfterTTS() { clearTimeout(ttsGuard); pausedForTTS = false; if (listening) { resumeRec(); micLight('on'); } }
 function pickVoice() {
   const vs = speechSynthesis.getVoices();
   return vs.find(v => /zh[-_]TW/i.test(v.lang)) || vs.find(v => /zh/i.test(v.lang) && /Taiwan|臺灣|台灣/.test(v.name)) || vs.find(v => /zh/i.test(v.lang));
